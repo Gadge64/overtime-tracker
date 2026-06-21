@@ -1,0 +1,348 @@
+/* ============================================================
+   styles.css — All shared CSS for the Overtime Tracker
+
+   Colour palette:
+     #042d2d  deep teal (primary / brand)
+     #1f8a5f  green (yes / awarded)
+     #c0392b  red (no / danger)
+     #1a2e2e  near-black (body text)
+     #7a8c8a  muted teal-grey (labels, secondary text)
+     #f5f7f6  off-white (page background)
+     #e1e8e6  light border grey
+
+   Fonts: Inter (body), Archivo (headings, numbers)
+   ============================================================ */
+
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Archivo:wght@600;700;800&display=swap');
+
+
+/* ── Reset & base ───────────────────────────────────────────── */
+*, *::before, *::after { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  font-family: 'Inter', -apple-system, 'Segoe UI', sans-serif;
+  background: #f5f7f6;
+  color: #1a2e2e;
+}
+
+input, textarea, button { font-family: 'Inter', sans-serif; }
+
+/* Thin custom scrollbar */
+::-webkit-scrollbar { width: 4px; }
+::-webkit-scrollbar-track { background: #f5f7f6; }
+::-webkit-scrollbar-thumb { background: #cdd6d4; border-radius: 2px; }
+
+
+/* ── Page wrapper ───────────────────────────────────────────── */
+.app-wrapper {
+  min-height: 100vh;
+  padding-bottom: 60px;
+}
+
+
+/* ── Header ─────────────────────────────────────────────────── */
+.header {
+  background: #042d2d;
+  padding: 20px;
+}
+
+.header-title {
+  font-family: 'Archivo', sans-serif;
+  font-size: 24px;
+  letter-spacing: 0.5px;
+  color: #ffffff;
+  font-weight: 800;
+}
+
+.header-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-top: 4px;
+}
+
+.header-subtitle {
+  font-size: 11px;
+  letter-spacing: 1.5px;
+  color: #9fc7bf;
+  text-transform: uppercase;
+  font-weight: 600;
+}
+
+/* Small "GD ✕" sign-out button in the header */
+.signout-btn {
+  background: none;
+  border: none;
+  color: #9fc7bf;
+  font-size: 11px;
+  cursor: pointer;
+  letter-spacing: 1px;
+  text-transform: uppercase;
+  font-weight: 600;
+  padding: 0;
+}
+.signout-btn:hover { color: #ffffff; }
+
+
+/* ── Tab navigation ─────────────────────────────────────────── */
+.tab-bar {
+  border-bottom: 1px solid #e1e8e6;
+  display: flex;
+  padding: 0 12px;
+  background: #ffffff;
+}
+
+.tab-btn {
+  background: none;
+  border: none;
+  border-bottom: 3px solid transparent;
+  color: #7a8c8a;
+  cursor: pointer;
+  font-size: 12px;
+  letter-spacing: 1px;
+  text-transform: uppercase;
+  padding: 12px 16px;
+  transition: color 0.2s;
+  font-weight: 600;
+}
+.tab-btn.active { color: #042d2d; border-bottom-color: #042d2d; }
+.tab-btn:hover  { color: #042d2d; }
+
+.tab-content { padding: 16px; }
+
+
+/* ── Generic button ─────────────────────────────────────────── */
+.btn {
+  border: 1px solid #c8d2d0;
+  background: #fff;
+  color: #1a2e2e;
+  cursor: pointer;
+  font-size: 12px;
+  letter-spacing: 0.3px;
+  padding: 9px 16px;
+  text-transform: uppercase;
+  transition: all 0.15s;
+  font-weight: 600;
+  border-radius: 3px;
+}
+.btn:hover    { background: #eef2f1; border-color: #042d2d; }
+.btn:disabled { opacity: 0.4; cursor: not-allowed; }
+
+/* Variants */
+.btn.primary { background: #042d2d; color: #ffffff; border-color: #042d2d; font-weight: 700; }
+.btn.primary:hover:not(:disabled) { background: #0a4a4a; }
+.btn.danger  { border-color: #c0392b; color: #c0392b; }
+.btn.danger:hover  { background: #fdf0ee; }
+.btn.yes     { border-color: #1f8a5f; color: #1f8a5f; }
+.btn.yes:hover     { background: #eef9f3; }
+.btn.no      { border-color: #c0392b; color: #c0392b; }
+.btn.no:hover      { background: #fdf0ee; }
+
+
+/* ── Text inputs ────────────────────────────────────────────── */
+.input {
+  background: #fff;
+  border: 1px solid #c8d2d0;
+  color: #1a2e2e;
+  font-size: 13px;
+  padding: 9px 12px;
+  width: 100%;
+  outline: none;
+  border-radius: 3px;
+}
+.input:focus { border-color: #042d2d; box-shadow: 0 0 0 2px #042d2d22; }
+.input:disabled { opacity: 0.5; }
+
+
+/* ── Card ───────────────────────────────────────────────────── */
+.card {
+  background: #ffffff;
+  border: 1px solid #e1e8e6;
+  margin-bottom: 8px;
+  padding: 14px 16px;
+  border-radius: 4px;
+  box-shadow: 0 1px 2px rgba(4,45,45,0.04);
+}
+
+
+/* ── Status badges ──────────────────────────────────────────── */
+.badge {
+  display: inline-block;
+  font-size: 10px;
+  letter-spacing: 0.5px;
+  padding: 3px 9px;
+  text-transform: uppercase;
+  border-radius: 3px;
+  font-weight: 700;
+  white-space: nowrap;
+}
+.badge-gold  { background: #eef2f1; color: #042d2d; border: 1px solid #042d2d33; }
+.badge-green { background: #eef9f3; color: #1f8a5f; border: 1px solid #1f8a5f33; }
+.badge-red   { background: #fdf0ee; color: #c0392b; border: 1px solid #c0392b33; }
+.badge-grey  { background: #f0f3f2; color: #7a8c8a; border: 1px solid #c8d2d0; }
+
+
+/* ── Priority board rank number ─────────────────────────────── */
+.rank-num {
+  font-family: 'Archivo', sans-serif;
+  font-size: 26px;
+  color: #cdd6d4;
+  min-width: 36px;
+  line-height: 1;
+  font-weight: 800;
+}
+.rank-num.top { color: #042d2d; } /* #1 in queue gets dark teal */
+
+
+/* ── Section title ──────────────────────────────────────────── */
+.section-title {
+  font-size: 11px;
+  letter-spacing: 2px;
+  text-transform: uppercase;
+  color: #7a8c8a;
+  margin: 20px 0 10px;
+  font-weight: 700;
+}
+
+
+/* ── Divider ────────────────────────────────────────────────── */
+.divider { border: none; border-top: 1px solid #e1e8e6; margin: 16px 0; }
+
+
+/* ── Form label ─────────────────────────────────────────────── */
+label {
+  font-size: 10px;
+  letter-spacing: 1.5px;
+  text-transform: uppercase;
+  color: #7a8c8a;
+  display: block;
+  margin-bottom: 6px;
+  font-weight: 600;
+}
+
+
+/* ── Checkbox row (used in Post OT form) ────────────────────── */
+.checkbox-row { display: flex; align-items: center; gap: 10px; cursor: pointer; }
+.checkbox-row input[type=checkbox] { width: 16px; height: 16px; accent-color: #042d2d; cursor: pointer; }
+
+
+/* ── "How does this work?" explainer box ────────────────────── */
+.explainer-box {
+  background: #ffffff;
+  border: 1px solid #e1e8e6;
+  border-left: 3px solid #042d2d; /* coloured left stripe to distinguish it */
+  padding: 18px;
+  margin-bottom: 16px;
+  font-size: 13px;
+  line-height: 1.8;
+  border-radius: 4px;
+}
+.explainer-box h3 {
+  font-family: 'Archivo', sans-serif;
+  font-size: 18px;
+  color: #042d2d;
+  margin: 0 0 10px;
+  font-weight: 700;
+}
+.explainer-box p  { margin: 0 0 10px; color: #475857; }
+.explainer-box ul { margin: 0 0 10px; padding-left: 20px; color: #475857; }
+.explainer-box li { margin-bottom: 6px; }
+
+
+/* ── Active OT alert banner ─────────────────────────────────── */
+.ot-alert {
+  background: #ffffff;
+  border: 1px solid #e1e8e6;
+  border-top: 4px solid #042d2d; /* thick top stripe signals urgency */
+  padding: 18px;
+  margin-bottom: 16px;
+  border-radius: 4px;
+  box-shadow: 0 2px 8px rgba(4,45,45,0.06);
+}
+.ot-alert h3 {
+  font-family: 'Archivo', sans-serif;
+  font-size: 20px;
+  color: #042d2d;
+  margin: 0 0 4px;
+  font-weight: 700;
+}
+
+
+/* ── Warning box (e.g. "already an active offer") ───────────── */
+.warning-box {
+  background: #fdf4e8;
+  border: 1px solid #d4a546;
+  border-radius: 4px;
+  padding: 12px;
+  margin-bottom: 16px;
+  font-size: 12px;
+  color: #8a6418;
+}
+
+
+/* ── Loading screen ─────────────────────────────────────────── */
+.loading-screen {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 100vh;
+  color: #7a8c8a;
+  font-size: 13px;
+  letter-spacing: 1px;
+}
+
+
+/* ── Auth / name-picker screen ──────────────────────────────── */
+.auth-screen {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  min-height: 100vh;
+  padding: 32px 20px;
+  background: #f5f7f6;
+}
+
+.auth-title {
+  font-family: 'Archivo', sans-serif;
+  font-size: 28px;
+  color: #042d2d;
+  font-weight: 800;
+  margin-bottom: 8px;
+  text-align: center;
+}
+
+.auth-subtitle {
+  font-size: 13px;
+  color: #7a8c8a;
+  margin-bottom: 32px;
+  text-align: center;
+}
+
+/* Grid of name buttons on the auth screen */
+.auth-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 10px;
+  width: 100%;
+  max-width: 320px;
+}
+
+.auth-name-btn {
+  padding: 18px 8px;
+  font-family: 'Archivo', sans-serif;
+  font-size: 16px;
+  font-weight: 700;
+  background: #fff;
+  border: 2px solid #e1e8e6;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: all 0.15s;
+  color: #1a2e2e;
+}
+.auth-name-btn:hover {
+  border-color: #042d2d;
+  background: #042d2d;
+  color: #fff;
+}

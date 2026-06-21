@@ -1,0 +1,16 @@
+# Dependencies
+node_modules/
+
+# Local environment — contains secrets, never commit this
+.env
+
+# Vite build output
+dist/
+
+# Editor
+.vscode/
+.idea/
+
+# OS
+.DS_Store
+Thumbs.db
