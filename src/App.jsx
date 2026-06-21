@@ -121,7 +121,7 @@ function AuthScreen({ team, admins, onSelectMember, onSelectAdmin }) {
         ))}
       </div>
 
-      {/* Admin section — shown below the team grid if any admins exist */}
+      {/* Co-ordinator section — shown below the team grid if any admins exist */}
       {admins.length > 0 && (
         <div style={{ width: "100%", maxWidth: 320, marginTop: 24 }}>
           <div style={{
@@ -129,7 +129,7 @@ function AuthScreen({ team, admins, onSelectMember, onSelectAdmin }) {
             fontSize: 10, letterSpacing: 2, textTransform: "uppercase",
             color: "#7a8c8a", fontWeight: 700,
           }}>
-            Admin
+            Co-ordinator
           </div>
           <div style={{ display: "flex", gap: 10, justifyContent: "center" }}>
             {admins.map(a => (
@@ -152,7 +152,7 @@ function AuthScreen({ team, admins, onSelectMember, onSelectAdmin }) {
           {/* stopPropagation prevents clicking inside the box from closing it */}
           <div className="password-box" onClick={e => e.stopPropagation()}>
             <div style={{ fontFamily: "'Archivo', sans-serif", fontSize: 18, fontWeight: 700, color: "#042d2d", marginBottom: 4 }}>
-              Admin Login
+              Co-ordinator Login
             </div>
             <div style={{ fontSize: 12, color: "#7a8c8a", marginBottom: 20 }}>
               Enter the admin password to continue.
@@ -472,7 +472,7 @@ export default function App() {
         <div className="header-title">OVERTIME TRACKER</div>
         <div className="header-row">
           <div className="header-subtitle">
-            {isAdmin ? "Supervisor view" : "Fair rotation system"}
+            {isAdmin ? "Co-ordinator view" : "Fair rotation system"}
           </div>
           {/* Tap name to sign out and switch identity */}
           <button className="signout-btn" onClick={signOut}>

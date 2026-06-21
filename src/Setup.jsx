@@ -157,7 +157,7 @@ export default function Setup({
       {isAdmin && (
         <>
           <hr className="divider" />
-          <div className="section-title">Supervisors</div>
+          <div className="section-title">Co-ordinators</div>
 
           {admins.map(a => (
             <div key={a.id} className="card" style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
@@ -193,7 +193,7 @@ export default function Setup({
               ) : (
                 <>
                   <span style={{ flex: 1, fontSize: 13, fontWeight: 600, color: "#1a2e2e" }}>{a.name}</span>
-                  <span className="badge badge-gold" style={{ flexShrink: 0 }}>Supervisor</span>
+                  <span className="badge badge-gold" style={{ flexShrink: 0 }}>Co-ordinator</span>
                   <button className="btn" style={{ padding: "5px 10px", fontSize: 10, flexShrink: 0 }} onClick={() => startEditAdmin(a)}>Edit</button>
                   <button className="btn danger" style={{ padding: "5px 10px", fontSize: 10, flexShrink: 0 }} onClick={() => setRemoveAdminConfirm(a.id)}>Remove</button>
                 </>
@@ -206,7 +206,7 @@ export default function Setup({
           <div style={{ display: "flex", gap: 8, marginTop: 8 }}>
             <input
               className="input"
-              placeholder="New supervisor name"
+              placeholder="New co-ordinator name"
               value={newAdminName}
               onChange={e => setNewAdminName(e.target.value)}
               onKeyDown={e => e.key === "Enter" && handleAddAdmin()}
