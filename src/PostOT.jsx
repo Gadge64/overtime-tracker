@@ -1,9 +1,13 @@
 // ============================================================
 // PostOT.jsx — Post an overtime offer tab
 //
-// Lets supervisors/admins create a new OT opportunity.
-// Only one offer can be active at a time — form is disabled
-// while one is already open.
+// Lets admins create a new planned OT opportunity.
+// Only one offer can be active at a time.
+//
+// Response window rules:
+//   72+ hours away  → 24 hour window
+//   48–72 hours away → 12 hour window
+//   Under 48 hours  → not accepted here, use WhatsApp instead
 //
 // Props:
 //   activeOffer — current open offer (or null); blocks new posts
@@ -12,13 +16,13 @@
 
 import { useState } from "react";
 
-// Preview the response window length based on the entered shift time.
-// Mirrors the logic in App.jsx so the label is always accurate.
+// Returns the window length in hours, or null if the shift is too soon.
+// Must match the logic in App.jsx exactly.
 function getWindowHours(shiftTime) {
   const hoursUntil = (new Date(shiftTime) - Date.now()) / 3_600_000;
-  if (hoursUntil >= 48) return 24;
-  if (hoursUntil >= 24) return 12;
-  return 4;
+  if (hoursUntil >= 72) return 24;  // 3+ days away → 24 hour window
+  if (hoursUntil >= 48) return 12;  // 2–3 days away → 12 hour window
+  return null;                       // under 48h — blocked
 }
 
 export default function PostOT({ activeOffer, onPost }) {
@@ -26,13 +30,18 @@ export default function PostOT({ activeOffer, onPost }) {
   const [shiftTime, setShiftTime] = useState("");
   const [immediate, setImmediate] = useState(false);
 
-  const blocked   = !!activeOffer; // can't post while one is active
-  const canSubmit = !blocked && desc.trim() && (immediate || shiftTime);
+  const blocked = !!activeOffer; // can't post while another offer is already open
+
+  // Check if the entered shift time is too soon (under 48h away)
+  const tooSoon = !immediate && shiftTime && getWindowHours(shiftTime) === null;
+
+  // All conditions that must be true before the Post button is enabled
+  const canSubmit = !blocked && desc.trim() && (immediate || (shiftTime && !tooSoon));
 
   function handleSubmit() {
     if (!canSubmit) return;
     onPost({ desc, shiftTime, immediate });
-    // Reset the form so it's clean if they come back to post another
+    // Reset the form for the next post
     setDesc("");
     setShiftTime("");
     setImmediate(false);
@@ -42,7 +51,7 @@ export default function PostOT({ activeOffer, onPost }) {
     <div>
       <div className="section-title">Post an overtime opportunity</div>
 
-      {/* Warning if there's already an open offer */}
+      {/* Warning: another offer already open */}
       {blocked && (
         <div className="warning-box">
           ⚠ There's already an active overtime offer. Go to the Board tab to close or cancel it first.
@@ -64,8 +73,7 @@ export default function PostOT({ activeOffer, onPost }) {
       </div>
 
       {/* ── Immediate cover checkbox ──────────────────────── */}
-      {/* When ticked, hides the shift time picker and marks the offer
-          as first-come-first-served (no score impact) */}
+      {/* Immediate offers are first-come-first-served and bypass the window system */}
       <div style={{ marginBottom: 14 }}>
         <label className="checkbox-row" style={{ display: "flex" }}>
           <input
@@ -81,7 +89,7 @@ export default function PostOT({ activeOffer, onPost }) {
       </div>
 
       {/* ── Shift start time picker ───────────────────────── */}
-      {/* Hidden when "immediate" is checked — shift time is irrelevant then */}
+      {/* Hidden when "immediate" is checked */}
       {!immediate && (
         <div style={{ marginBottom: 16 }}>
           <label>Shift start date & time</label>
@@ -92,11 +100,18 @@ export default function PostOT({ activeOffer, onPost }) {
             onChange={e => setShiftTime(e.target.value)}
             disabled={blocked}
           />
-          {/* Preview the response window length so the supervisor knows what they're setting */}
+
+          {/* Show response window preview, or a warning if the shift is too soon */}
           {shiftTime && (
-            <div style={{ fontSize: 11, color: "#042d2d", fontWeight: 600, marginTop: 6 }}>
-              Response window: {getWindowHours(shiftTime)} hours
-            </div>
+            tooSoon ? (
+              <div style={{ fontSize: 11, color: "#c0392b", fontWeight: 600, marginTop: 6 }}>
+                ⚠ This shift is less than 48 hours away — please use WhatsApp for short-notice cover.
+              </div>
+            ) : (
+              <div style={{ fontSize: 11, color: "#042d2d", fontWeight: 600, marginTop: 6 }}>
+                Response window: {getWindowHours(shiftTime)} hours
+              </div>
+            )
           )}
         </div>
       )}

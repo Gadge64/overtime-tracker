@@ -50,9 +50,9 @@ function showNotification(title, body) {
 
 function getWindowHours(shiftTime) {
   const hoursUntil = (new Date(shiftTime) - Date.now()) / 3_600_000;
-  if (hoursUntil >= 48) return 24;  // 2+ days away → 24 hour window
-  if (hoursUntil >= 24) return 12;  // 1–2 days away → 12 hour window
-  return 4;                          // under 24h away → 4 hour window
+  if (hoursUntil >= 72) return 24;  // 3+ days away → 24 hour window
+  if (hoursUntil >= 48) return 12;  // 2–3 days away → 12 hour window
+  return null;                       // under 48h — blocked in the form, handled on WhatsApp
 }
 
 // ─── Auth screen ─────────────────────────────────────────────────────────

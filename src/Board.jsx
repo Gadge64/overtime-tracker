@@ -120,9 +120,9 @@ export default function Board({ team, activeOffer, currentUser, onRespond, onClo
           </ul>
           <p><strong style={{ color: "#042d2d" }}>Response windows:</strong></p>
           <ul>
-            <li>Shift 48+ hrs away → 24 hour window</li>
-            <li>Shift 24–48 hrs away → 12 hour window</li>
-            <li>Shift under 24 hrs away → 4 hour window</li>
+            <li>Shift 72+ hrs away → 24 hour window</li>
+            <li>Shift 48–72 hrs away → 12 hour window</li>
+            <li>Shift under 48 hrs → handled on WhatsApp, not posted here</li>
             <li>🚨 Immediate cover needed → first come first served, scores unaffected</li>
           </ul>
           <p style={{ color: "#7a8c8a", fontSize: 11 }}>

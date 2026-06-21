@@ -91,14 +91,17 @@ export default function About() {
             </tr>
           </thead>
           <tbody>
-            <WindowRow label="48+ hours away"   window="24 hours" />
-            <WindowRow label="24–48 hours away" window="12 hours" />
-            <WindowRow label="Under 24 hours"   window="4 hours"  last />
+            <WindowRow label="72+ hours away"    window="24 hours" />
+            <WindowRow label="48–72 hours away"  window="12 hours" />
+            <WindowRow label="Under 48 hours"    window="WhatsApp" last />
           </tbody>
         </table>
-        <p style={{ ...p, marginBottom: 0, marginTop: 12 }}>
+        <p style={{ ...p, marginTop: 12 }}>
           When the window closes, the supervisor taps <strong style={teal}>Award</strong> and
           the shift goes to whoever said Yes with the lowest score.
+        </p>
+        <p style={{ ...p, marginBottom: 0, color: "#7a8c8a", fontSize: 11 }}>
+          Shifts with less than 48 hours notice are handled on WhatsApp — they won't appear here.
         </p>
       </div>
 
