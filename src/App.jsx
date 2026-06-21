@@ -112,9 +112,9 @@ function AuthScreen({ team, admins, onSelectMember, onSelectAdmin }) {
       <div className="auth-title">OVERTIME TRACKER</div>
       <div className="auth-subtitle">Who are you? Tap your name to continue.</div>
 
-      {/* Team member grid */}
+      {/* Team member grid — sorted alphabetically for easy scanning */}
       <div className="auth-grid">
-        {team.map(m => (
+        {[...team].sort((a, b) => a.name.localeCompare(b.name)).map(m => (
           <button key={m.id} className="auth-name-btn" onClick={() => onSelectMember(m)}>
             {m.name}
           </button>
