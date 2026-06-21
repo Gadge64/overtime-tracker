@@ -19,6 +19,7 @@ import Board   from "./Board";
 import PostOT  from "./PostOT";
 import History from "./History";
 import Setup   from "./Setup";
+import About   from "./About";
 import "./styles.css";
 
 // localStorage key for remembering which team member this device belongs to
@@ -328,6 +329,7 @@ export default function App() {
           ["post",    "Post OT"],
           ["history", "History"],
           ["setup",   "Setup"],
+          ["about",   "About"],
         ].map(([key, label]) => (
           <button
             key={key}
@@ -372,6 +374,10 @@ export default function App() {
             onRemove={removeMember}
             onResetScores={resetScores}
           />
+        )}
+
+        {tab === "about" && (
+          <About />
         )}
 
       </div>
