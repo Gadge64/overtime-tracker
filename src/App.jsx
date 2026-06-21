@@ -56,13 +56,57 @@ function getWindowHours(shiftTime) {
   return null;                       // under 48h — blocked in the form
 }
 
+// ─── Password hashing ────────────────────────────────────────────────────
+// Uses the browser's built-in Web Crypto API to SHA-256 hash the password.
+// We never store or transmit the plain-text password — only the hash is
+// saved in the database, and comparison happens client-side.
+
+async function hashPassword(password) {
+  const encoded = new TextEncoder().encode(password);
+  const hashBuffer = await crypto.subtle.digest("SHA-256", encoded);
+  return Array.from(new Uint8Array(hashBuffer))
+    .map(b => b.toString(16).padStart(2, "0"))
+    .join("");
+}
+
 // ─── Auth screen ─────────────────────────────────────────────────────────
 // Two sections:
-//   Top: team member grid (picking here sets role='member')
-//   Bottom: supervisor section (picking here sets role='admin')
-// Admins are completely separate from team members — no score, no OT eligibility.
+//   Top: team member grid — tap name to log in as a team member
+//   Bottom: Admin button — tapping opens a password prompt
+//
+// Admins are separate from team members — no score, not eligible for OT.
 
 function AuthScreen({ team, admins, onSelectMember, onSelectAdmin }) {
+  const [pendingAdmin,   setPendingAdmin]   = useState(null);  // admin tapped, awaiting password
+  const [passwordInput,  setPasswordInput]  = useState("");
+  const [passwordError,  setPasswordError]  = useState(false);
+  const [checking,       setChecking]       = useState(false);
+
+  // Called when the admin submits their password
+  async function handleAdminLogin(e) {
+    e.preventDefault();
+    if (!pendingAdmin || !passwordInput) return;
+    setChecking(true);
+    setPasswordError(false);
+
+    const hash = await hashPassword(passwordInput);
+
+    if (hash === pendingAdmin.password_hash) {
+      // Password correct — pass the admin record up to App
+      onSelectAdmin(pendingAdmin);
+    } else {
+      setPasswordError(true);
+      setPasswordInput("");
+    }
+    setChecking(false);
+  }
+
+  function closeModal() {
+    setPendingAdmin(null);
+    setPasswordInput("");
+    setPasswordError(false);
+  }
+
   return (
     <div className="auth-screen">
       <div className="auth-title">OVERTIME TRACKER</div>
@@ -77,7 +121,7 @@ function AuthScreen({ team, admins, onSelectMember, onSelectAdmin }) {
         ))}
       </div>
 
-      {/* Supervisor section — only shown if there are admins in the DB */}
+      {/* Admin section — shown below the team grid if any admins exist */}
       {admins.length > 0 && (
         <div style={{ width: "100%", maxWidth: 320, marginTop: 24 }}>
           <div style={{
@@ -85,7 +129,7 @@ function AuthScreen({ team, admins, onSelectMember, onSelectAdmin }) {
             fontSize: 10, letterSpacing: 2, textTransform: "uppercase",
             color: "#7a8c8a", fontWeight: 700,
           }}>
-            Supervisor
+            Admin
           </div>
           <div style={{ display: "flex", gap: 10, justifyContent: "center" }}>
             {admins.map(a => (
@@ -93,11 +137,50 @@ function AuthScreen({ team, admins, onSelectMember, onSelectAdmin }) {
                 key={a.id}
                 className="auth-name-btn"
                 style={{ flex: 1 }}
-                onClick={() => onSelectAdmin(a)}
+                onClick={() => { setPendingAdmin(a); setPasswordInput(""); setPasswordError(false); }}
               >
                 {a.name}
               </button>
             ))}
+          </div>
+        </div>
+      )}
+
+      {/* Password modal — shown after admin taps their name */}
+      {pendingAdmin && (
+        <div className="password-overlay" onClick={closeModal}>
+          {/* stopPropagation prevents clicking inside the box from closing it */}
+          <div className="password-box" onClick={e => e.stopPropagation()}>
+            <div style={{ fontFamily: "'Archivo', sans-serif", fontSize: 18, fontWeight: 700, color: "#042d2d", marginBottom: 4 }}>
+              Admin Login
+            </div>
+            <div style={{ fontSize: 12, color: "#7a8c8a", marginBottom: 20 }}>
+              Enter the admin password to continue.
+            </div>
+
+            <form onSubmit={handleAdminLogin}>
+              <input
+                className="input"
+                type="password"
+                placeholder="Password"
+                value={passwordInput}
+                onChange={e => { setPasswordInput(e.target.value); setPasswordError(false); }}
+                autoFocus
+                style={{ marginBottom: 8 }}
+              />
+              {/* Show error message if wrong password was entered */}
+              {passwordError && (
+                <div style={{ fontSize: 11, color: "#c0392b", marginBottom: 8, fontWeight: 600 }}>
+                  Incorrect password. Try again.
+                </div>
+              )}
+              <div style={{ display: "flex", gap: 8, marginTop: 4 }}>
+                <button className="btn primary" type="submit" disabled={!passwordInput || checking} style={{ flex: 1 }}>
+                  {checking ? "Checking…" : "Login"}
+                </button>
+                <button className="btn" type="button" onClick={closeModal}>Cancel</button>
+              </div>
+            </form>
           </div>
         </div>
       )}
