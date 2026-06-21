@@ -424,6 +424,15 @@ export default function App() {
     }
   }
 
+  async function changeAdminPassword(id, newPasswordHash) {
+    const { error } = await supabase
+      .from("admins")
+      .update({ password_hash: newPasswordHash })
+      .eq("id", id);
+    if (error) { console.error("changeAdminPassword:", error); return false; }
+    return true;
+  }
+
   // ── Auth handlers ────────────────────────────────────────────────────────
 
   // Team member login — tagged with role:'member'
@@ -535,6 +544,7 @@ export default function App() {
             onAddAdmin={addAdmin}
             onRenameAdmin={renameAdmin}
             onRemoveAdmin={removeAdmin}
+            onChangeAdminPassword={changeAdminPassword}
           />
         )}
 

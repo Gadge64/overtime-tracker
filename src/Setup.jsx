@@ -25,10 +25,20 @@
 
 import { useState } from "react";
 
+// Hashes a plain-text password with SHA-256 using the browser's Web Crypto API.
+// Must match the same function used in App.jsx (AuthScreen) for logins to work.
+async function hashPassword(password) {
+  const encoded = new TextEncoder().encode(password);
+  const hashBuffer = await crypto.subtle.digest("SHA-256", encoded);
+  return Array.from(new Uint8Array(hashBuffer))
+    .map(b => b.toString(16).padStart(2, "0"))
+    .join("");
+}
+
 export default function Setup({
   team, admins, currentUser,
   onAdd, onRename, onRemove, onResetScores,
-  onAddAdmin, onRenameAdmin, onRemoveAdmin,
+  onAddAdmin, onRenameAdmin, onRemoveAdmin, onChangeAdminPassword,
 }) {
   const [editMemberId,   setEditMemberId]   = useState(null);
   const [editMemberVal,  setEditMemberVal]  = useState("");
@@ -41,6 +51,12 @@ export default function Setup({
   const [removeAdminConfirm, setRemoveAdminConfirm] = useState(null);
 
   const [resetConfirm,   setResetConfirm]   = useState(false);
+
+  // Password change form — only shown when a co-ordinator is logged in
+  const [newPassword,    setNewPassword]    = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
+  const [passwordMsg,    setPasswordMsg]    = useState(null); // { ok: bool, text: string }
+  const [savingPassword, setSavingPassword] = useState(false);
 
   const isAdmin = currentUser.role === "admin";
 
@@ -84,6 +100,31 @@ export default function Setup({
     if (!newAdminName.trim()) return;
     onAddAdmin(newAdminName.trim());
     setNewAdminName("");
+  }
+
+  // ── Password change handler ──────────────────────────────
+
+  async function handleChangePassword(e) {
+    e.preventDefault();
+    if (newPassword !== confirmPassword) {
+      setPasswordMsg({ ok: false, text: "Passwords don't match." });
+      return;
+    }
+    if (newPassword.length < 6) {
+      setPasswordMsg({ ok: false, text: "Password must be at least 6 characters." });
+      return;
+    }
+    setSavingPassword(true);
+    const hash = await hashPassword(newPassword);
+    const ok = await onChangeAdminPassword(currentUser.id, hash);
+    setSavingPassword(false);
+    if (ok) {
+      setPasswordMsg({ ok: true, text: "Password updated successfully." });
+      setNewPassword("");
+      setConfirmPassword("");
+    } else {
+      setPasswordMsg({ ok: false, text: "Something went wrong. Try again." });
+    }
   }
 
   return (
@@ -216,6 +257,41 @@ export default function Setup({
           </div>
         </>
       )}
+
+      {/* ── Change password — only shown to the logged-in co-ordinator ── */}
+      <hr className="divider" />
+      <div className="section-title">Change my password</div>
+      <form onSubmit={handleChangePassword}>
+        <input
+          className="input"
+          type="password"
+          placeholder="New password"
+          value={newPassword}
+          onChange={e => { setNewPassword(e.target.value); setPasswordMsg(null); }}
+          style={{ marginBottom: 8 }}
+        />
+        <input
+          className="input"
+          type="password"
+          placeholder="Confirm new password"
+          value={confirmPassword}
+          onChange={e => { setConfirmPassword(e.target.value); setPasswordMsg(null); }}
+          style={{ marginBottom: 8 }}
+        />
+        {/* Feedback message — green for success, red for error */}
+        {passwordMsg && (
+          <div style={{ fontSize: 12, fontWeight: 600, marginBottom: 8, color: passwordMsg.ok ? "#1f8a5f" : "#c0392b" }}>
+            {passwordMsg.text}
+          </div>
+        )}
+        <button
+          className="btn primary"
+          type="submit"
+          disabled={!newPassword || !confirmPassword || savingPassword}
+        >
+          {savingPassword ? "Saving…" : "Update password"}
+        </button>
+      </form>
 
       {/* ── Danger zone — admin only ───────────────────────── */}
       {isAdmin && (
