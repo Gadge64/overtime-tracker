@@ -284,6 +284,23 @@ export default function App() {
     }
   }
 
+  // Grant or revoke admin for a team member.
+  // Only admins can call this — the UI enforces it by only showing the
+  // toggle to admins, but the DB doesn't restrict it (internal tool).
+  async function toggleAdmin(id, isAdmin) {
+    const { error } = await supabase
+      .from("team_members")
+      .update({ is_admin: isAdmin })
+      .eq("id", id);
+    if (error) console.error("toggleAdmin:", error);
+    // If this device's user's admin status changed, update local cache
+    if (!error && currentUser?.id === id) {
+      const updated = { ...currentUser, is_admin: isAdmin };
+      setCurrentUser(updated);
+      localStorage.setItem(CURRENT_USER_KEY, JSON.stringify(updated));
+    }
+  }
+
   // ── Auth handlers ────────────────────────────────────────────────────────
 
   function selectUser(member) {
@@ -323,10 +340,12 @@ export default function App() {
       </div>
 
       {/* ── Tab bar ──────────────────────────────────────────── */}
+      {/* Post OT is only shown to admins — everyone else sees Board, History, Setup, About */}
       <div className="tab-bar">
         {[
           ["board",   "Board"],
-          ["post",    "Post OT"],
+          // Only admins see the Post OT tab — conditionally included in the array
+          ...(currentUser.is_admin ? [["post", "Post OT"]] : []),
           ["history", "History"],
           ["setup",   "Setup"],
           ["about",   "About"],
@@ -369,10 +388,12 @@ export default function App() {
         {tab === "setup" && (
           <Setup
             team={team}
+            currentUser={currentUser}
             onAdd={addMember}
             onRename={renameMember}
             onRemove={removeMember}
             onResetScores={resetScores}
+            onToggleAdmin={toggleAdmin}
           />
         )}
 
