@@ -5,13 +5,14 @@
 //   1. Active OT offer (if one exists) — with yes/no response
 //      buttons for the current user, a full team response list,
 //      and an "Award" button for whoever has priority.
-//   2. Priority board — all team members sorted by score, so
-//      everyone can see who's next in line.
+//   2. Priority board — all team members sorted by score.
+//      Tap any name to see that person's personal OT history.
 //
 // Props:
-//   team        — array of team members (already sorted by score)
+//   team        — array of team members (sorted by score)
+//   history     — array of past closed offers (from App)
 //   activeOffer — the open OT offer from Supabase, or null
-//   currentUser — { id, name } of the person using this device
+//   currentUser — { id, name, role } of the person using this device
 //   onRespond   — fn(memberId, 'yes'|'no')
 //   onCloseOT   — fn(winnerId) — awards the shift
 //   onCancelOT  — fn() — cancels without awarding
@@ -23,10 +24,9 @@ import { useState } from "react";
 
 function formatDate(ts) {
   if (!ts) return "—";
-  return new Date(ts).toLocaleDateString("en-GB", { day: "numeric", month: "short" });
+  return new Date(ts).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" });
 }
 
-// Returns a human-readable "how long ago" string for the priority board
 function timeAgo(ts) {
   if (!ts) return null;
   const days = Math.floor((Date.now() - new Date(ts).getTime()) / 86_400_000);
@@ -35,20 +35,78 @@ function timeAgo(ts) {
   return `${days}d ago`;
 }
 
+// ─── Per-person history modal ─────────────────────────────────────────────
+// Shows all OT shifts a specific team member has been awarded.
+
+function MemberHistoryModal({ member, history, onClose }) {
+  // Filter the full history down to shifts this member won
+  const theirShifts = history.filter(
+    o => o.status === "closed" && o.winner_id === member.id
+  );
+
+  return (
+    <div className="password-overlay" onClick={onClose}>
+      <div className="password-box" style={{ maxWidth: 360 }} onClick={e => e.stopPropagation()}>
+
+        {/* Header */}
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 16 }}>
+          <div>
+            <div style={{ fontFamily: "'Archivo', sans-serif", fontSize: 18, fontWeight: 700, color: "#042d2d" }}>
+              {member.name}
+            </div>
+            <div style={{ fontSize: 11, color: "#7a8c8a", marginTop: 2 }}>
+              {theirShifts.length} OT shift{theirShifts.length !== 1 ? "s" : ""} worked · {member.score} pts
+            </div>
+          </div>
+          <button className="btn" style={{ padding: "5px 10px" }} onClick={onClose}>✕</button>
+        </div>
+
+        {/* Shift list */}
+        {theirShifts.length === 0 ? (
+          <div style={{ fontSize: 13, color: "#9aa8a6", textAlign: "center", padding: "20px 0" }}>
+            No overtime shifts recorded yet.
+          </div>
+        ) : (
+          <div style={{ maxHeight: 340, overflowY: "auto" }}>
+            {theirShifts.map(o => (
+              <div key={o.id} style={{
+                borderBottom: "1px solid #e1e8e6",
+                padding: "10px 0",
+                display: "flex",
+                flexDirection: "column",
+                gap: 3,
+              }}>
+                <div style={{ fontSize: 13, fontWeight: 600, color: "#1a2e2e" }}>
+                  {o.description}
+                </div>
+                <div style={{ fontSize: 11, color: "#7a8c8a" }}>
+                  {/* Show the actual shift date if available, otherwise the date it was awarded */}
+                  {o.shift_time
+                    ? `Shift: ${formatDate(o.shift_time)}`
+                    : `Awarded: ${formatDate(o.closed_at)}`
+                  }
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+
+      </div>
+    </div>
+  );
+}
+
 // ─── Component ────────────────────────────────────────────────────────────
 
-export default function Board({ team, activeOffer, currentUser, onRespond, onCloseOT, onCancelOT }) {
-  const [showExplainer, setShowExplainer] = useState(false);
+export default function Board({ team, history, activeOffer, currentUser, onRespond, onCloseOT, onCancelOT }) {
+  const [showExplainer,   setShowExplainer]   = useState(false);
+  const [selectedMember,  setSelectedMember]  = useState(null); // member whose history is being viewed
 
-  // Sort team by score ascending, last_ot ascending as tiebreaker.
-  // Supabase already returns them sorted, but we re-sort client-side
-  // so the board stays correct while realtime updates are in flight.
   const ranked = [...team].sort((a, b) => {
     if (a.score !== b.score) return a.score - b.score;
     return new Date(a.last_ot || 0) - new Date(b.last_ot || 0);
   });
 
-  // Build the window close label shown under the offer heading
   let windowLabel = null;
   if (activeOffer?.immediate) {
     windowLabel = "🚨 IMMEDIATE — First come, first served (no scores affected)";
@@ -57,34 +115,20 @@ export default function Board({ team, activeOffer, currentUser, onRespond, onClo
     windowLabel = `⏱ Window closes: ${t.toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" })} · ${t.toLocaleDateString("en-GB", { day: "numeric", month: "short" })}`;
   }
 
-  // Find the current user's response to the active offer (if any)
   const myResponse = activeOffer?.ot_responses?.find(r => r.member_id === currentUser.id);
 
-  // Build yes-responders list.
-  // IMPORTANT: sorting differs by offer type:
-  //   - Planned OT  → sort by score rank (lowest score = highest priority)
-  //   - Immediate OT → sort by responded_at (first to say yes wins)
-  // This fixes a bug in the original app where immediate offers used score
-  // order instead of response-time order.
   const yesResponders = (() => {
     if (!activeOffer) return [];
-
     const responses = activeOffer.ot_responses ?? [];
-    const yesMemberIds = new Set(
-      responses.filter(r => r.answer === "yes").map(r => r.member_id)
-    );
+    const yesMemberIds = new Set(responses.filter(r => r.answer === "yes").map(r => r.member_id));
     const yesMembers = ranked.filter(m => yesMemberIds.has(m.id));
-
     if (activeOffer.immediate) {
-      // First come, first served — sort by the time they responded
       return yesMembers.sort((a, b) => {
         const aTime = responses.find(r => r.member_id === a.id)?.responded_at;
         const bTime = responses.find(r => r.member_id === b.id)?.responded_at;
         return new Date(aTime) - new Date(bTime);
       });
     }
-
-    // Planned OT — already in score order from `ranked`
     return yesMembers;
   })();
 
@@ -113,21 +157,12 @@ export default function Board({ team, activeOffer, currentUser, onRespond, onClo
             <li>Tap <strong style={{ color: "#1f8a5f" }}>Yes</strong> or <strong style={{ color: "#c0392b" }}>No</strong> — no racing to reply first.</li>
             <li>When the window closes, whoever said Yes with the <strong style={{ color: "#042d2d" }}>lowest score</strong> gets it.</li>
           </ul>
-          <p><strong style={{ color: "#042d2d" }}>Scores:</strong></p>
-          <ul>
-            <li>+1 point if you <strong style={{ color: "#042d2d" }}>take a shift</strong> — you move down the priority list</li>
-            <li>0 points for everything else — declining, not responding, missing out. No penalties.</li>
-          </ul>
           <p><strong style={{ color: "#042d2d" }}>Response windows:</strong></p>
           <ul>
             <li>Shift 72+ hrs away → 24 hour window</li>
             <li>Shift 48–72 hrs away → 12 hour window</li>
             <li>Shift under 48 hrs → handled on WhatsApp, not posted here</li>
-            <li>🚨 Immediate cover needed → first come first served, scores unaffected</li>
           </ul>
-          <p style={{ color: "#7a8c8a", fontSize: 11 }}>
-            Scores reset every 3 months so nothing carries on forever.
-          </p>
         </div>
       )}
 
@@ -168,7 +203,6 @@ export default function Board({ team, activeOffer, currentUser, onRespond, onClo
           )}
 
           {/* ── Full team response status ─────────────────── */}
-          {/* Shows everyone's status so the supervisor knows who still needs to respond */}
           <div className="section-title">Team responses</div>
           {ranked.map(m => {
             const resp = activeOffer.ot_responses?.find(r => r.member_id === m.id);
@@ -208,7 +242,6 @@ export default function Board({ team, activeOffer, currentUser, onRespond, onClo
                     </span>
                     {m.name} <span style={{ color: "#9aa8a6" }}>({m.score} pts)</span>
                   </span>
-                  {/* Only show Award for the top-priority person */}
                   {i === 0 && (
                     <button className="btn primary" style={{ padding: "5px 14px" }} onClick={() => onCloseOT(m.id)}>
                       Award
@@ -220,7 +253,6 @@ export default function Board({ team, activeOffer, currentUser, onRespond, onClo
           )}
 
           {/* ── Award section — immediate offers ─────────── */}
-          {/* Immediate = first to say yes wins, regardless of score */}
           {activeOffer.immediate && (
             <div style={{ marginTop: 14 }}>
               <div className="section-title">Award to first responder</div>
@@ -247,9 +279,18 @@ export default function Board({ team, activeOffer, currentUser, onRespond, onClo
       )}
 
       {/* ── Priority board ────────────────────────────────── */}
+      {/* Tap any row to see that person's personal OT history */}
       <div className="section-title">Priority board — lowest score goes first</div>
+      <div style={{ fontSize: 11, color: "#9aa8a6", marginBottom: 10 }}>
+        Tap a name to see their overtime history.
+      </div>
       {ranked.map((m, i) => (
-        <div key={m.id} className="card" style={{ display: "flex", alignItems: "center", gap: 14 }}>
+        <div
+          key={m.id}
+          className="card"
+          style={{ display: "flex", alignItems: "center", gap: 14, cursor: "pointer" }}
+          onClick={() => setSelectedMember(m)}
+        >
           <div className={`rank-num ${i === 0 ? "top" : ""}`}>
             {String(i + 1).padStart(2, "0")}
           </div>
@@ -277,6 +318,15 @@ export default function Board({ team, activeOffer, currentUser, onRespond, onClo
           </div>
         </div>
       ))}
+
+      {/* ── Per-person history modal ──────────────────────── */}
+      {selectedMember && (
+        <MemberHistoryModal
+          member={selectedMember}
+          history={history}
+          onClose={() => setSelectedMember(null)}
+        />
+      )}
 
     </div>
   );

@@ -67,7 +67,6 @@ export default function About() {
         <ol style={{ margin: 0, paddingLeft: 20, color: "#475857", fontSize: 13, lineHeight: 1.9 }}>
           <li><strong style={teal}>Lowest score first</strong> — whoever has taken fewer shifts overall</li>
           <li><strong style={teal}>Least recent OT</strong> — if scores are equal, whoever did overtime longest ago goes next</li>
-          <li><strong style={teal}>Longest on the roster</strong> — if neither has ever done OT, whoever joined the team first</li>
         </ol>
         <p style={{ ...p, marginBottom: 0, marginTop: 12, color: "#7a8c8a", fontSize: 11 }}>
           The result is always predictable — you can see exactly where you sit on the Board tab.

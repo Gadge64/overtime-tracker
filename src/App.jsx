@@ -516,6 +516,7 @@ export default function App() {
         {tab === "board" && (
           <Board
             team={team}
+            history={history}
             activeOffer={activeOffer}
             currentUser={currentUser}
             onRespond={respond}
