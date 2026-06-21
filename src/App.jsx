@@ -2,14 +2,18 @@
 // App.jsx — Root component
 //
 // Three jobs:
-//   1. Auth gate — shows a name-picker until the user identifies
-//      themselves. Identity is stored in localStorage so they
-//      don't have to pick every time.
-//   2. Data layer — fetches team, active offer, and history from
-//      Supabase on mount. Subscribes to realtime changes so every
-//      device sees updates instantly without refreshing.
-//   3. Actions — all database writes (post, respond, award, cancel,
-//      add/rename/remove member) live here and are passed down as
+//   1. Auth gate — team members pick their name from the roster.
+//      Supervisors (admins) have a separate login section.
+//      Identity is stored in localStorage so they don't re-pick
+//      every visit. currentUser always has a `role` field:
+//        'member' — a team member eligible for OT
+//        'admin'  — a supervisor, not eligible for OT
+//
+//   2. Data layer — fetches team_members, admins, active offer,
+//      and history from Supabase on mount. Realtime subscriptions
+//      keep every device in sync automatically.
+//
+//   3. Actions — all database writes live here and are passed as
 //      props to the tab components.
 // ============================================================
 
@@ -22,14 +26,12 @@ import Setup   from "./Setup";
 import About   from "./About";
 import "./styles.css";
 
-// localStorage key for remembering which team member this device belongs to
+// localStorage key for persisting the current user's identity between visits
 const CURRENT_USER_KEY = "ot-current-user";
 
 // ─── Notification helpers ─────────────────────────────────────────────────
-// These use the standard Web Notifications API (not push — the app must be
-// open for these to fire). Works well enough for a tab that's always open
-// on a shared device. True push (background notifications) would need a
-// push service and VAPID keys — see the README for guidance on that.
+// Browser notifications fire when a new OT offer is posted while the tab is open.
+// (True push notifications when the app is closed require extra infrastructure.)
 
 async function requestNotificationPermission() {
   if ("Notification" in window && Notification.permission === "default") {
@@ -44,34 +46,61 @@ function showNotification(title, body) {
 }
 
 // ─── Window hours helper ──────────────────────────────────────────────────
-// Determines how long the response window should be based on how soon
-// the shift starts. This is the canonical version — used before inserting
-// into the DB so the computed value is stored alongside the offer.
+// How long the response window should be based on how soon the shift starts.
+// Shifts under 48h are not posted here — handled on WhatsApp instead.
 
 function getWindowHours(shiftTime) {
   const hoursUntil = (new Date(shiftTime) - Date.now()) / 3_600_000;
   if (hoursUntil >= 72) return 24;  // 3+ days away → 24 hour window
   if (hoursUntil >= 48) return 12;  // 2–3 days away → 12 hour window
-  return null;                       // under 48h — blocked in the form, handled on WhatsApp
+  return null;                       // under 48h — blocked in the form
 }
 
 // ─── Auth screen ─────────────────────────────────────────────────────────
-// Simple name picker — no password. The team member taps their name
-// and we remember it in localStorage. Good enough for an internal tool.
-// To add a PIN or proper auth later, this is the place to do it.
+// Two sections:
+//   Top: team member grid (picking here sets role='member')
+//   Bottom: supervisor section (picking here sets role='admin')
+// Admins are completely separate from team members — no score, no OT eligibility.
 
-function AuthScreen({ team, onSelect }) {
+function AuthScreen({ team, admins, onSelectMember, onSelectAdmin }) {
   return (
     <div className="auth-screen">
       <div className="auth-title">OVERTIME TRACKER</div>
       <div className="auth-subtitle">Who are you? Tap your name to continue.</div>
+
+      {/* Team member grid */}
       <div className="auth-grid">
         {team.map(m => (
-          <button key={m.id} className="auth-name-btn" onClick={() => onSelect(m)}>
+          <button key={m.id} className="auth-name-btn" onClick={() => onSelectMember(m)}>
             {m.name}
           </button>
         ))}
       </div>
+
+      {/* Supervisor section — only shown if there are admins in the DB */}
+      {admins.length > 0 && (
+        <div style={{ width: "100%", maxWidth: 320, marginTop: 24 }}>
+          <div style={{
+            textAlign: "center", marginBottom: 12,
+            fontSize: 10, letterSpacing: 2, textTransform: "uppercase",
+            color: "#7a8c8a", fontWeight: 700,
+          }}>
+            Supervisor
+          </div>
+          <div style={{ display: "flex", gap: 10, justifyContent: "center" }}>
+            {admins.map(a => (
+              <button
+                key={a.id}
+                className="auth-name-btn"
+                style={{ flex: 1 }}
+                onClick={() => onSelectAdmin(a)}
+              >
+                {a.name}
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -81,119 +110,130 @@ function AuthScreen({ team, onSelect }) {
 export default function App() {
   const [tab, setTab] = useState("board");
 
-  // All data comes from Supabase — no localStorage for app state anymore
+  // Data from Supabase
   const [team,        setTeam]        = useState([]);
-  const [activeOffer, setActiveOffer] = useState(null); // the one open offer, or null
+  const [admins,      setAdmins]      = useState([]); // supervisor accounts (separate from team)
+  const [activeOffer, setActiveOffer] = useState(null);
   const [history,     setHistory]     = useState([]);
   const [loading,     setLoading]     = useState(true);
 
-  // The team member using this device. Persisted in localStorage so they
-  // don't have to pick their name every visit.
+  // Current user — has { id, name, role } where role is 'member' or 'admin'
   const [currentUser, setCurrentUser] = useState(() => {
     try { return JSON.parse(localStorage.getItem(CURRENT_USER_KEY)); }
     catch { return null; }
   });
 
   // ── Data fetching ───────────────────────────────────────────────────────
-  // Each fetch is a separate function so realtime handlers can call them
-  // individually (e.g. only re-fetch active offer when responses change).
 
   const fetchTeam = useCallback(async () => {
     const { data, error } = await supabase
       .from("team_members")
       .select("*")
       .order("score",   { ascending: true })
-      .order("last_ot", { ascending: true, nullsFirst: true }); // tiebreaker: least recent OT first
+      .order("last_ot", { ascending: true, nullsFirst: true });
     if (error) { console.error("fetchTeam:", error); return; }
     setTeam(data);
   }, []);
 
+  const fetchAdmins = useCallback(async () => {
+    const { data, error } = await supabase
+      .from("admins")
+      .select("*")
+      .order("created_at", { ascending: true });
+    if (error) { console.error("fetchAdmins:", error); return; }
+    setAdmins(data);
+  }, []);
+
   const fetchActiveOffer = useCallback(async () => {
-    // Fetch the open offer together with all its responses in one query.
-    // maybeSingle() returns null instead of erroring when there's no open offer.
     const { data, error } = await supabase
       .from("ot_offers")
       .select("*, ot_responses(*)")
       .eq("status", "open")
       .maybeSingle();
     if (error) { console.error("fetchActiveOffer:", error); return; }
-    setActiveOffer(data); // null when no offer is open
+    setActiveOffer(data);
   }, []);
 
   const fetchHistory = useCallback(async () => {
-    // Fetch closed/cancelled offers with winner name + response breakdown
     const { data, error } = await supabase
       .from("ot_offers")
       .select("*, winner:team_members!winner_id(name), ot_responses(*)")
       .in("status", ["closed", "cancelled"])
       .order("closed_at", { ascending: false })
-      .limit(50); // last 50 offers is plenty
+      .limit(50);
     if (error) { console.error("fetchHistory:", error); return; }
     setHistory(data);
   }, []);
 
-  // ── Mount: initial load + realtime subscription ─────────────────────────
+  // ── Mount: initial load + realtime subscriptions ────────────────────────
 
   useEffect(() => {
-    Promise.all([fetchTeam(), fetchActiveOffer(), fetchHistory()])
+    Promise.all([fetchTeam(), fetchAdmins(), fetchActiveOffer(), fetchHistory()])
       .finally(() => setLoading(false));
 
     requestNotificationPermission();
 
-    // Subscribe to all three tables. Any change on any device triggers a
-    // targeted refetch. We refetch rather than merge incremental changes
-    // to keep the logic simple — fine for a 15-person team.
     const channel = supabase
       .channel("overtime-changes")
-
       .on("postgres_changes", { event: "*", schema: "public", table: "team_members" },
         () => fetchTeam()
       )
-
+      .on("postgres_changes", { event: "*", schema: "public", table: "admins" },
+        () => fetchAdmins()
+      )
       .on("postgres_changes", { event: "*", schema: "public", table: "ot_offers" },
         (payload) => {
           fetchActiveOffer();
           fetchHistory();
-          // Show a browser notification when a new offer is posted
           if (payload.eventType === "INSERT" && payload.new?.status === "open") {
             showNotification("⚡ New Overtime Available", payload.new.description);
           }
         }
       )
-
       .on("postgres_changes", { event: "*", schema: "public", table: "ot_responses" },
-        () => fetchActiveOffer() // someone responded — refresh the active offer
+        () => fetchActiveOffer()
       )
-
       .subscribe();
 
-    return () => supabase.removeChannel(channel); // clean up on unmount
-  }, [fetchTeam, fetchActiveOffer, fetchHistory]);
+    return () => supabase.removeChannel(channel);
+  }, [fetchTeam, fetchAdmins, fetchActiveOffer, fetchHistory]);
 
-  // ── Keep currentUser in sync with team changes ──────────────────────────
-  // If someone's name is changed or their account is deleted on another device,
-  // update (or clear) the locally stored identity.
+  // ── Keep currentUser in sync with DB changes ────────────────────────────
+  // If someone's name changes or account is deleted on another device,
+  // update or clear the locally stored identity.
 
   useEffect(() => {
-    if (!currentUser || team.length === 0) return;
-    const stillExists = team.find(m => m.id === currentUser.id);
-    if (!stillExists) {
-      // Member was removed — log out this device
-      setCurrentUser(null);
-      localStorage.removeItem(CURRENT_USER_KEY);
-    } else if (stillExists.name !== currentUser.name) {
-      // Name was updated elsewhere — refresh local cache
-      const updated = { ...currentUser, name: stillExists.name };
-      setCurrentUser(updated);
-      localStorage.setItem(CURRENT_USER_KEY, JSON.stringify(updated));
+    if (!currentUser) return;
+
+    if (currentUser.role === "admin") {
+      // Check against the admins table
+      if (admins.length === 0) return;
+      const stillExists = admins.find(a => a.id === currentUser.id);
+      if (!stillExists) {
+        setCurrentUser(null);
+        localStorage.removeItem(CURRENT_USER_KEY);
+      } else if (stillExists.name !== currentUser.name) {
+        const updated = { ...currentUser, name: stillExists.name };
+        setCurrentUser(updated);
+        localStorage.setItem(CURRENT_USER_KEY, JSON.stringify(updated));
+      }
+    } else {
+      // Check against the team_members table
+      if (team.length === 0) return;
+      const stillExists = team.find(m => m.id === currentUser.id);
+      if (!stillExists) {
+        setCurrentUser(null);
+        localStorage.removeItem(CURRENT_USER_KEY);
+      } else if (stillExists.name !== currentUser.name) {
+        const updated = { ...currentUser, name: stillExists.name };
+        setCurrentUser(updated);
+        localStorage.setItem(CURRENT_USER_KEY, JSON.stringify(updated));
+      }
     }
-  }, [team, currentUser]);
+  }, [team, admins, currentUser]);
 
-  // ── Actions ─────────────────────────────────────────────────────────────
-  // All DB writes live here and are passed as props to tab components.
-  // Realtime subscriptions above will automatically refresh state after each write.
+  // ── Actions: OT offers ──────────────────────────────────────────────────
 
-  // Post a new OT offer (called from PostOT tab)
   async function postOT({ desc, shiftTime, immediate }) {
     const payload = immediate
       ? { description: desc, immediate: true, status: "open" }
@@ -208,14 +248,12 @@ export default function App() {
             status:       "open",
           };
         })();
-
     const { error } = await supabase.from("ot_offers").insert(payload);
     if (error) { console.error("postOT:", error); return; }
     setTab("board");
   }
 
-  // Record or update a yes/no response (called from Board tab).
-  // Uses UPSERT so a person can change their answer before the window closes.
+  // UPSERT so team members can update their response before the window closes
   async function respond(memberId, answer) {
     if (!activeOffer) return;
     const { error } = await supabase
@@ -225,11 +263,9 @@ export default function App() {
         { onConflict: "offer_id,member_id" }
       );
     if (error) console.error("respond:", error);
-    // Realtime will trigger fetchActiveOffer() — no manual state update needed
   }
 
-  // Award the shift and close the offer. Uses an RPC (Postgres function)
-  // so the score increment and offer close happen atomically.
+  // Award the shift — atomic RPC increments winner's score and closes the offer
   async function closeOT(winnerId) {
     if (!activeOffer) return;
     const { error } = await supabase.rpc("close_ot_offer", {
@@ -239,7 +275,6 @@ export default function App() {
     if (error) console.error("closeOT:", error);
   }
 
-  // Cancel the active offer without awarding anyone
   async function cancelOT() {
     if (!activeOffer) return;
     const { error } = await supabase
@@ -249,63 +284,77 @@ export default function App() {
     if (error) console.error("cancelOT:", error);
   }
 
-  // Reset all scores to zero (end of quarter)
-  async function resetScores() {
-    const { error } = await supabase.rpc("reset_all_scores");
-    if (error) console.error("resetScores:", error);
-  }
+  // ── Actions: team members ───────────────────────────────────────────────
 
-  // Add a new team member
   async function addMember(name) {
     const { error } = await supabase.from("team_members").insert({ name });
     if (error) console.error("addMember:", error);
   }
 
-  // Rename a team member
   async function renameMember(id, name) {
     const { error } = await supabase.from("team_members").update({ name }).eq("id", id);
     if (error) console.error("renameMember:", error);
-    // If this device's user was renamed, update local cache immediately
-    if (!error && currentUser?.id === id) {
+    if (!error && currentUser?.role === "member" && currentUser.id === id) {
       const updated = { ...currentUser, name };
       setCurrentUser(updated);
       localStorage.setItem(CURRENT_USER_KEY, JSON.stringify(updated));
     }
   }
 
-  // Remove a team member (their responses cascade-delete via the FK)
   async function removeMember(id) {
     const { error } = await supabase.from("team_members").delete().eq("id", id);
     if (error) console.error("removeMember:", error);
-    // If this device's user was deleted, log them out
-    if (!error && currentUser?.id === id) {
+    if (!error && currentUser?.role === "member" && currentUser.id === id) {
       setCurrentUser(null);
       localStorage.removeItem(CURRENT_USER_KEY);
     }
   }
 
-  // Grant or revoke admin for a team member.
-  // Only admins can call this — the UI enforces it by only showing the
-  // toggle to admins, but the DB doesn't restrict it (internal tool).
-  async function toggleAdmin(id, isAdmin) {
-    const { error } = await supabase
-      .from("team_members")
-      .update({ is_admin: isAdmin })
-      .eq("id", id);
-    if (error) console.error("toggleAdmin:", error);
-    // If this device's user's admin status changed, update local cache
-    if (!error && currentUser?.id === id) {
-      const updated = { ...currentUser, is_admin: isAdmin };
+  async function resetScores() {
+    const { error } = await supabase.rpc("reset_all_scores");
+    if (error) console.error("resetScores:", error);
+  }
+
+  // ── Actions: admins ─────────────────────────────────────────────────────
+
+  async function addAdmin(name) {
+    const { error } = await supabase.from("admins").insert({ name });
+    if (error) console.error("addAdmin:", error);
+  }
+
+  async function renameAdmin(id, name) {
+    const { error } = await supabase.from("admins").update({ name }).eq("id", id);
+    if (error) console.error("renameAdmin:", error);
+    if (!error && currentUser?.role === "admin" && currentUser.id === id) {
+      const updated = { ...currentUser, name };
       setCurrentUser(updated);
       localStorage.setItem(CURRENT_USER_KEY, JSON.stringify(updated));
     }
   }
 
+  async function removeAdmin(id) {
+    const { error } = await supabase.from("admins").delete().eq("id", id);
+    if (error) console.error("removeAdmin:", error);
+    if (!error && currentUser?.role === "admin" && currentUser.id === id) {
+      setCurrentUser(null);
+      localStorage.removeItem(CURRENT_USER_KEY);
+    }
+  }
+
   // ── Auth handlers ────────────────────────────────────────────────────────
 
-  function selectUser(member) {
-    setCurrentUser(member);
-    localStorage.setItem(CURRENT_USER_KEY, JSON.stringify(member));
+  // Team member login — tagged with role:'member'
+  function selectMember(member) {
+    const user = { ...member, role: "member" };
+    setCurrentUser(user);
+    localStorage.setItem(CURRENT_USER_KEY, JSON.stringify(user));
+  }
+
+  // Supervisor login — tagged with role:'admin'
+  function selectAdmin(admin) {
+    const user = { ...admin, role: "admin" };
+    setCurrentUser(user);
+    localStorage.setItem(CURRENT_USER_KEY, JSON.stringify(user));
   }
 
   function signOut() {
@@ -319,10 +368,18 @@ export default function App() {
     return <div className="loading-screen">Loading…</div>;
   }
 
-  // Name picker — shown until the user identifies themselves
   if (!currentUser) {
-    return <AuthScreen team={team} onSelect={selectUser} />;
+    return (
+      <AuthScreen
+        team={team}
+        admins={admins}
+        onSelectMember={selectMember}
+        onSelectAdmin={selectAdmin}
+      />
+    );
   }
+
+  const isAdmin = currentUser.role === "admin";
 
   return (
     <div className="app-wrapper">
@@ -331,8 +388,10 @@ export default function App() {
       <div className="header">
         <div className="header-title">OVERTIME TRACKER</div>
         <div className="header-row">
-          <div className="header-subtitle">Fair rotation system</div>
-          {/* Shows the current user's name — tap to switch identity */}
+          <div className="header-subtitle">
+            {isAdmin ? "Supervisor view" : "Fair rotation system"}
+          </div>
+          {/* Tap name to sign out and switch identity */}
           <button className="signout-btn" onClick={signOut}>
             {currentUser.name} ✕
           </button>
@@ -340,12 +399,11 @@ export default function App() {
       </div>
 
       {/* ── Tab bar ──────────────────────────────────────────── */}
-      {/* Post OT is only shown to admins — everyone else sees Board, History, Setup, About */}
+      {/* Post OT is only visible to admins */}
       <div className="tab-bar">
         {[
           ["board",   "Board"],
-          // Only admins see the Post OT tab — conditionally included in the array
-          ...(currentUser.is_admin ? [["post", "Post OT"]] : []),
+          ...(isAdmin ? [["post", "Post OT"]] : []),
           ["history", "History"],
           ["setup",   "Setup"],
           ["about",   "About"],
@@ -374,11 +432,8 @@ export default function App() {
           />
         )}
 
-        {tab === "post" && (
-          <PostOT
-            activeOffer={activeOffer}
-            onPost={postOT}
-          />
+        {tab === "post" && isAdmin && (
+          <PostOT activeOffer={activeOffer} onPost={postOT} />
         )}
 
         {tab === "history" && (
@@ -388,12 +443,15 @@ export default function App() {
         {tab === "setup" && (
           <Setup
             team={team}
+            admins={admins}
             currentUser={currentUser}
             onAdd={addMember}
             onRename={renameMember}
             onRemove={removeMember}
             onResetScores={resetScores}
-            onToggleAdmin={toggleAdmin}
+            onAddAdmin={addAdmin}
+            onRenameAdmin={renameAdmin}
+            onRemoveAdmin={removeAdmin}
           />
         )}
 

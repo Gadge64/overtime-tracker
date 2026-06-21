@@ -143,27 +143,29 @@ export default function Board({ team, activeOffer, currentUser, onRespond, onClo
           </div>
 
           {/* ── Current user's response buttons ──────────── */}
-          {/* Only the logged-in user can tap Yes/No for themselves */}
-          <div className="section-title">Your response</div>
-          <div className="card" style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "10px 14px" }}>
-            <span style={{ fontSize: 13, color: "#1a2e2e", fontWeight: 500 }}>
-              {currentUser.name} <span style={{ color: "#9aa8a6" }}>(you)</span>
-            </span>
-            <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-              {myResponse ? (
-                // Already responded — show their answer (they can't change it here,
-                // but an admin could add that feature later)
-                <span className={`badge ${myResponse.answer === "yes" ? "badge-green" : "badge-red"}`}>
-                  {myResponse.answer === "yes" ? "✓ Yes" : "✗ No"}
+          {/* Admins are not eligible for OT — only team members get response buttons */}
+          {currentUser.role === "member" && (
+            <>
+              <div className="section-title">Your response</div>
+              <div className="card" style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "10px 14px" }}>
+                <span style={{ fontSize: 13, color: "#1a2e2e", fontWeight: 500 }}>
+                  {currentUser.name} <span style={{ color: "#9aa8a6" }}>(you)</span>
                 </span>
-              ) : (
-                <>
-                  <button className="btn yes" style={{ padding: "5px 12px" }} onClick={() => onRespond(currentUser.id, "yes")}>Yes</button>
-                  <button className="btn no"  style={{ padding: "5px 12px" }} onClick={() => onRespond(currentUser.id, "no")}>No</button>
-                </>
-              )}
-            </div>
-          </div>
+                <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+                  {myResponse ? (
+                    <span className={`badge ${myResponse.answer === "yes" ? "badge-green" : "badge-red"}`}>
+                      {myResponse.answer === "yes" ? "✓ Yes" : "✗ No"}
+                    </span>
+                  ) : (
+                    <>
+                      <button className="btn yes" style={{ padding: "5px 12px" }} onClick={() => onRespond(currentUser.id, "yes")}>Yes</button>
+                      <button className="btn no"  style={{ padding: "5px 12px" }} onClick={() => onRespond(currentUser.id, "no")}>No</button>
+                    </>
+                  )}
+                </div>
+              </div>
+            </>
+          )}
 
           {/* ── Full team response status ─────────────────── */}
           {/* Shows everyone's status so the supervisor knows who still needs to respond */}
