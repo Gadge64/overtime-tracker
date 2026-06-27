@@ -218,18 +218,21 @@ export default function App() {
 
   // Fetches all open offers AND recently closed/cancelled (last 30 min).
   // The "recent" ones are shown in Board as result banners.
+  // Note: we avoid FK join syntax (winner:team_members!winner_id) because it
+  // depends on the constraint name and can silently return null if mismatched.
+  // Winner names are resolved from the team array inside Board instead.
   const fetchActiveOffers = useCallback(async () => {
     const thirtyMinsAgo = new Date(Date.now() - 30 * 60_000).toISOString();
 
     const [openRes, recentRes] = await Promise.all([
       supabase
         .from("ot_offers")
-        .select("*, ot_responses(*), winner:team_members!winner_id(name)")
+        .select("*, ot_responses(*)")
         .eq("status", "open")
         .order("created_at", { ascending: true }),
       supabase
         .from("ot_offers")
-        .select("*, ot_responses(*), winner:team_members!winner_id(name)")
+        .select("*, ot_responses(*)")
         .in("status", ["closed", "cancelled"])
         .gte("closed_at", thirtyMinsAgo)
         .order("closed_at", { ascending: false })
@@ -245,7 +248,7 @@ export default function App() {
   const fetchHistory = useCallback(async () => {
     const { data, error } = await supabase
       .from("ot_offers")
-      .select("*, winner:team_members!winner_id(name), ot_responses(*)")
+      .select("*, ot_responses(*)")
       .in("status", ["closed", "cancelled"])
       .order("closed_at", { ascending: false })
       .limit(50);
@@ -515,7 +518,7 @@ export default function App() {
         )}
 
         {tab === "history" && (
-          <History history={history} />
+          <History history={history} team={team} />
         )}
 
         {tab === "setup" && (

@@ -18,7 +18,7 @@ function formatDate(ts) {
   return new Date(ts).toLocaleDateString("en-GB", { day: "numeric", month: "short" });
 }
 
-export default function History({ history }) {
+export default function History({ history, team }) {
   if (history.length === 0) {
     return (
       <div>
@@ -33,8 +33,10 @@ export default function History({ history }) {
       <div className="section-title">Past overtime offers</div>
 
       {history.map(h => {
-        const yesCount = h.ot_responses?.filter(r => r.answer === "yes").length ?? 0;
-        const noCount  = h.ot_responses?.filter(r => r.answer === "no").length ?? 0;
+        const yesCount   = h.ot_responses?.filter(r => r.answer === "yes").length ?? 0;
+        const noCount    = h.ot_responses?.filter(r => r.answer === "no").length ?? 0;
+        // Resolve winner name from team prop (avoids needing a FK join in the query)
+        const winnerName = h.winner_id ? team?.find(m => m.id === h.winner_id)?.name : null;
 
         return (
           <div key={h.id} className="card">
@@ -55,13 +57,13 @@ export default function History({ history }) {
 
             {/* Dates */}
             <div style={{ marginTop: 8, fontSize: 11, color: "#9aa8a6" }}>
-              Posted: {formatDate(h.posted_at)} · Closed: {formatDate(h.closed_at)}
+              Posted: {formatDate(h.created_at)} · Closed: {formatDate(h.closed_at)}
             </div>
 
             {/* Winner — only shown for closed (not cancelled) offers */}
-            {h.winner?.name && (
+            {winnerName && (
               <div style={{ marginTop: 8, fontSize: 12, color: "#1f8a5f", fontWeight: 600 }}>
-                ✓ Awarded to {h.winner.name}
+                ✓ Awarded to {winnerName}
                 {/* Show shift duration (hours added to their total) */}
                 {h.shift_hours != null && (
                   <span style={{ fontWeight: 400, color: "#7a8c8a", marginLeft: 6 }}>
@@ -71,10 +73,10 @@ export default function History({ history }) {
               </div>
             )}
 
-            {/* Response breakdown — now visible in history (was missing in the original app) */}
+            {/* Response breakdown */}
             {(yesCount > 0 || noCount > 0) && (
               <div style={{ marginTop: 6, fontSize: 11, color: "#9aa8a6" }}>
-                {yesCount} yes · {noCount} no
+                {yesCount} opted in · {noCount} declined
               </div>
             )}
 

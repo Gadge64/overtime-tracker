@@ -96,9 +96,11 @@ function MemberHistoryModal({ member, history, onClose }) {
 // Shown for offers that auto-closed in the last 30 min so the result is
 // visible on the Board without needing to check History.
 
-function RecentlyClosedCard({ offer }) {
-  const awarded   = offer.status === "closed" && offer.winner?.name;
-  const cancelled = offer.status === "cancelled" || !awarded;
+function RecentlyClosedCard({ offer, team }) {
+  // Resolve winner name from the team array (avoids needing a FK join in the query)
+  const winnerName = offer.winner_id ? team.find(m => m.id === offer.winner_id)?.name : null;
+  const awarded    = offer.status === "closed" && !!winnerName;
+  const cancelled  = offer.status === "cancelled" || !awarded;
 
   return (
     <div style={{
@@ -115,7 +117,7 @@ function RecentlyClosedCard({ offer }) {
       <div style={{ fontSize: 13, fontWeight: 600, color: "#1a2e2e" }}>{offer.description}</div>
       {awarded && (
         <div style={{ fontSize: 13, color: "#1f8a5f", fontWeight: 600, marginTop: 4 }}>
-          ✓ {offer.winner.name}
+          ✓ {winnerName}
           {offer.shift_hours != null && (
             <span style={{ fontWeight: 400, color: "#7a8c8a", marginLeft: 8 }}>· {fmtHours(offer.shift_hours)}</span>
           )}
@@ -342,7 +344,7 @@ export default function Board({ team, history, activeOffers, currentUser, onResp
       {recentlyClosed.length > 0 && (
         <>
           <div className="section-title">Recently closed</div>
-          {recentlyClosed.map(o => <RecentlyClosedCard key={o.id} offer={o} />)}
+          {recentlyClosed.map(o => <RecentlyClosedCard key={o.id} offer={o} team={team} />)}
         </>
       )}
 
