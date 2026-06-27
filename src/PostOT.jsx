@@ -152,7 +152,10 @@ export default function PostOT({ onPost }) {
       shiftStart:  effectiveStart.toISOString(),
       shiftEnd:    effectiveEnd.toISOString(),
       shiftHours:  Math.round(shiftHours * 100) / 100,
-      windowHours: effectiveWindowHours,  // pass explicit window so postOT doesn't recalculate
+      windowHours: effectiveWindowHours,
+      // Pass the raw date string (YYYY-MM-DD) so postOT can look it up in the
+      // roster without any timezone ambiguity from converting an ISO datetime.
+      rosterDate:  shiftDate,
     });
     setShiftDate("");
     setSelection(null);

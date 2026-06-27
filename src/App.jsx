@@ -348,7 +348,9 @@ export default function App() {
 
   // Posts a new offer. windowHours comes from PostOT (already calculated there,
   // including the short-notice coordinator-chosen window for sub-48h shifts).
-  async function postOT({ desc, shiftType, shiftStart, shiftEnd, shiftHours, windowHours }) {
+  // rosterDate is the YYYY-MM-DD string the coordinator picked; used to look up
+  // the roster and auto-decline anyone who is not ot_available on that date.
+  async function postOT({ desc, shiftType, shiftStart, shiftEnd, shiftHours, windowHours, rosterDate }) {
     const start = new Date(shiftStart);
     const payload = {
       description:  desc,
@@ -361,8 +363,49 @@ export default function App() {
       status:       "open",
       immediate:    false,
     };
-    const { error } = await supabase.from("ot_offers").insert(payload);
+
+    // Need the new offer's ID so we can create auto-decline responses immediately
+    const { data: newOffer, error } = await supabase
+      .from("ot_offers")
+      .insert(payload)
+      .select("id")
+      .single();
     if (error) { console.error("postOT:", error); return; }
+
+    // Look up the roster for this date and auto-decline ineligible members
+    if (rosterDate) {
+      const { data: rosterRows } = await supabase
+        .from("roster_availability")
+        .select("engineer, ot_available")
+        .eq("date", rosterDate);
+
+      if (rosterRows && rosterRows.length > 0) {
+        // Build a Set of initials that the roster explicitly marks as unavailable
+        const unavailable = new Set(
+          rosterRows.filter(r => !r.ot_available).map(r => r.engineer)
+        );
+
+        // Auto-decline active members whose roster entry says they're on shift
+        const toDecline = team.filter(m => m.active !== false && unavailable.has(m.name));
+
+        if (toDecline.length > 0) {
+          const autoDeclines = toDecline.map(m => ({
+            offer_id:      newOffer.id,
+            member_id:     m.id,
+            answer:        "no",
+            responded_at:  new Date().toISOString(),
+            auto_declined: true,  // prevents the member from changing this response
+          }));
+          const { error: declineErr } = await supabase.from("ot_responses").insert(autoDeclines);
+          if (declineErr) console.error("postOT (auto-decline):", declineErr);
+          else {
+            // Check if the offer can already be closed (e.g. all members are unavailable)
+            await supabase.rpc("check_and_close_if_complete", { p_offer_id: newOffer.id });
+          }
+        }
+      }
+    }
+
     setTab("board");
   }
 

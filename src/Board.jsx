@@ -212,13 +212,16 @@ function OfferCard({ offer, ranked, currentUser, currentUserIsActive, isAdmin, o
               <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
                 {myResponse && !changing ? (
                   // Show current response + option to change it before the window closes
+                  // auto_declined means the roster said this member is on shift — no Change allowed
                   <>
                     <span className={`badge ${myResponse.answer === "yes" ? "badge-green" : "badge-red"}`}>
-                      {myResponse.answer === "yes" ? "✓ Opted in" : "✗ Declined"}
+                      {myResponse.auto_declined ? "On shift (roster)" : myResponse.answer === "yes" ? "✓ Opted in" : "✗ Declined"}
                     </span>
-                    <button className="btn" style={{ padding: "3px 10px", fontSize: 11 }} onClick={() => setChanging(true)}>
-                      Change
-                    </button>
+                    {!myResponse.auto_declined && (
+                      <button className="btn" style={{ padding: "3px 10px", fontSize: 11 }} onClick={() => setChanging(true)}>
+                        Change
+                      </button>
+                    )}
                   </>
                 ) : (
                   <>
@@ -248,8 +251,8 @@ function OfferCard({ offer, ranked, currentUser, currentUserIsActive, isAdmin, o
                 {m.id === currentUser.id && <span style={{ color: "#9aa8a6" }}> (you)</span>}
               </span>
               {resp ? (
-                <span className={`badge ${resp.answer === "yes" ? "badge-green" : "badge-red"}`}>
-                  {resp.answer === "yes" ? "✓ In" : "✗ Declined"}
+                <span className={`badge ${resp.answer === "yes" ? "badge-green" : resp.auto_declined ? "badge-grey" : "badge-red"}`}>
+                  {resp.auto_declined ? "On shift" : resp.answer === "yes" ? "✓ In" : "✗ Declined"}
                 </span>
               ) : (
                 <span className="badge badge-grey">Waiting</span>
