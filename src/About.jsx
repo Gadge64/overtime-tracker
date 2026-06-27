@@ -79,7 +79,7 @@ export default function About({ isMember = false }) {
           </tbody>
         </table>
         <p style={{ ...p, marginTop: 10, marginBottom: 4, color: "#7a8c8a", fontSize: 11 }}>
-          † Overnight — shift ends at 08:15 on the following calendar day.
+          † Overnight — shift ends at 08:15 on the morning of the calendar date shown.
           The app handles this automatically when calculating hours and close times.
           Manual entry is also available if none of the presets fit.
         </p>
