@@ -167,8 +167,8 @@ export default function About() {
           <p style={{ ...p, marginBottom: 0 }}>
             Two engineers agree to cover each other's shifts on different dates. There is no requirement
             that the shifts are the same type — for example, an SBY can be swapped with an N.
-            The reciprocal leg can be arranged later; it doesn't have to be in the same week.
-            A Swap request requires you to pick the return date (the shift of theirs that you'll cover).
+            When you send a Swap request, no return date needs to be specified upfront.
+            If the partner accepts, they bank the return shift and call it in whenever suits them.
           </p>
         </div>
 
@@ -186,7 +186,7 @@ export default function About() {
         <Step n="1" text="Go to the Roster tab and navigate to the relevant week with the ◀ ▶ arrows." />
         <Step n="2" text="Open the 'Swap / UDR checker' section and pick a colleague from the dropdown." />
         <Step n="3" text="Your schedules appear side by side. 'Request →' appears on any day where they're free and you have a shift they could cover. 'You free' appears where the opposite is true." />
-        <Step n="4" text="Tap 'Request →' on the shift you'd like covered. Choose Swap or UDR. For a Swap, pick which of their shifts you'll cover in return from the list shown." />
+        <Step n="4" text="Tap 'Request →' on the shift you'd like covered. Choose Swap (return banked, no date needed) or UDR (one-way, no return at all). Add an optional note and send." />
         <Step n="5" text="Your colleague sees a pending request on their Roster tab. They tap Accept or Decline." last />
 
         <div style={{ marginTop: 10, fontSize: 12, color: "#7a8c8a", lineHeight: 1.6 }}>

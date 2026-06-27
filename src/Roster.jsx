@@ -92,12 +92,9 @@ function ShiftChip({ duty, status }) {
 // Shown when the user taps "Request →" on a day where they have a shift
 // and the chosen colleague is free.
 
-function RequestModal({ myDate, myDuty, dayLabel, partnerName, eligibleReturnDates, onConfirm, onClose }) {
-  const [type,       setType]       = useState("swap");
-  const [returnDate, setReturnDate] = useState(null);
-  const [note,       setNote]       = useState("");
-
-  const canSubmit = type === "udr" || (type === "swap" && returnDate !== null);
+function RequestModal({ myDate, myDuty, dayLabel, partnerName, onConfirm, onClose }) {
+  const [type, setType] = useState("swap");
+  const [note, setNote] = useState("");
 
   return (
     <div className="password-overlay" onClick={onClose}>
@@ -115,45 +112,15 @@ function RequestModal({ myDate, myDuty, dayLabel, partnerName, eligibleReturnDat
           <button className={`btn ${type === "swap" ? "primary" : ""}`} style={{ flex: 1, fontSize: 12 }} onClick={() => setType("swap")}>
             Swap — reciprocal
           </button>
-          <button className={`btn ${type === "udr"  ? "primary" : ""}`} style={{ flex: 1, fontSize: 12 }} onClick={() => { setType("udr"); setReturnDate(null); }}>
+          <button className={`btn ${type === "udr" ? "primary" : ""}`}  style={{ flex: 1, fontSize: 12 }} onClick={() => setType("udr")}>
             UDR — one-way
           </button>
         </div>
         <div style={{ fontSize: 11, color: "#9aa8a6", marginBottom: 14 }}>
           {type === "swap"
-            ? "Reciprocal — you cover one of their shifts in return. Pick it below."
-            : "Urgent Domestic Request — one-way cover, no reciprocal shift needed."}
+            ? "Reciprocal — the covering engineer banks a return shift, to be called in whenever suits them."
+            : "Urgent Domestic Request — one-way cover, no return shift owed."}
         </div>
-
-        {/* Return date picker (swap only) */}
-        {type === "swap" && (
-          <>
-            <div style={labelRow}>You'll cover {partnerName}'s…</div>
-            <div style={{ margin: "6px 0 14px", border: "1px solid #e1e8e6", borderRadius: 4, maxHeight: 160, overflowY: "auto" }}>
-              {eligibleReturnDates.length === 0 ? (
-                <div style={{ fontSize: 12, color: "#9aa8a6", padding: "12px" }}>
-                  No eligible return dates in the next 4 weeks.
-                </div>
-              ) : (
-                eligibleReturnDates.map(e => (
-                  <div
-                    key={e.date}
-                    onClick={() => setReturnDate(returnDate?.date === e.date ? null : e)}
-                    style={{
-                      display: "flex", justifyContent: "space-between", alignItems: "center",
-                      padding: "8px 12px", cursor: "pointer", borderBottom: "1px solid #f0f3f2",
-                      background: returnDate?.date === e.date ? "#eef5f3" : "#fff",
-                      fontWeight: returnDate?.date === e.date ? 600 : 400,
-                    }}
-                  >
-                    <span style={{ fontSize: 12, color: "#1a2e2e" }}>{e.label}</span>
-                    <ShiftChip duty={e.duty} status={e.status} />
-                  </div>
-                ))
-              )}
-            </div>
-          </>
-        )}
 
         {/* Optional note */}
         <div style={labelRow}>Note (optional)</div>
@@ -167,8 +134,8 @@ function RequestModal({ myDate, myDuty, dayLabel, partnerName, eligibleReturnDat
         />
 
         <div style={{ display: "flex", gap: 8 }}>
-          <button className="btn primary" style={{ flex: 1 }} disabled={!canSubmit}
-            onClick={() => onConfirm(type, returnDate, note.trim() || null)}>
+          <button className="btn primary" style={{ flex: 1 }}
+            onClick={() => onConfirm(type, note.trim() || null)}>
             Send request
           </button>
           <button className="btn" onClick={onClose}>Cancel</button>
@@ -257,29 +224,14 @@ export default function Roster({ currentUser, team }) {
 
   // ── Eligibility helpers ──────────────────────────────────────────────────
 
-  // Dates (across 4 weeks) where I'm free and the comparison engineer has a shift —
-  // i.e. dates I could cover them in return (used in the swap return date picker)
-  const eligibleReturnDates = compareWith
-    ? Object.entries(theirRoster)
-        .filter(([date, their]) => {
-          const my = myRoster[date];
-          return their.base_duty !== "R"
-            && their.status !== "AL_SHIFT"
-            && their.status !== "AL_REST"
-            && my && my.ot_available;
-        })
-        .map(([date, their]) => ({
-          date,
-          duty:   their.base_duty,
-          status: their.status,
-          label:  new Date(date + "T00:00:00").toLocaleDateString("en-GB", { weekday: "short", day: "numeric", month: "short" }),
-        }))
-        .sort((a, b) => a.date.localeCompare(b.date))
-    : [];
+  // (No return date picker — banked swap, return is arranged informally later)
 
   // ── Actions ──────────────────────────────────────────────────────────────
 
-  async function sendRequest(type, myDate, myDuty, returnEntry, note) {
+  // For swaps the return date/duty are left null — the covering engineer banks the
+  // reciprocal and calls it in whenever suits them. partner_date stays null until
+  // the banked shift is eventually arranged outside the app.
+  async function sendRequest(type, myDate, myDuty, note) {
     const partner = team.find(m => m.name === compareWith);
     if (!partner) return;
     const { error } = await supabase.from("swaps").insert({
@@ -288,8 +240,6 @@ export default function Roster({ currentUser, team }) {
       type,
       requester_date: myDate,
       requester_duty: myDuty,
-      partner_date:   returnEntry?.date ?? null,
-      partner_duty:   returnEntry?.duty ?? null,
       note:           note || null,
     });
     setRequestModal(null);
@@ -369,15 +319,15 @@ export default function Roster({ currentUser, team }) {
                   {isMe ? (
                     <>
                       You asked <strong>{otherName}</strong> to cover your <strong>{req.requester_duty}</strong> on <strong>{fmtDate(req.requester_date)}</strong>
-                      {req.type === "swap" && req.partner_date && (
-                        <> — in return you cover their <strong>{req.partner_duty}</strong> on <strong>{fmtDate(req.partner_date)}</strong></>
+                      {req.type === "swap" && (
+                        <span style={{ color: "#7a8c8a" }}> — return shift banked with {otherName}</span>
                       )}
                     </>
                   ) : (
                     <>
                       <strong>{otherName}</strong> is asking you to cover their <strong>{req.requester_duty}</strong> on <strong>{fmtDate(req.requester_date)}</strong>
-                      {req.type === "swap" && req.partner_date && (
-                        <> — they'll cover your <strong>{req.partner_duty}</strong> on <strong>{fmtDate(req.partner_date)}</strong></>
+                      {req.type === "swap" && (
+                        <span style={{ color: "#7a8c8a" }}> — you bank a return shift</span>
                       )}
                     </>
                   )}
@@ -521,9 +471,8 @@ export default function Roster({ currentUser, team }) {
           myDuty={requestModal.myDuty}
           dayLabel={requestModal.dayLabel}
           partnerName={compareWith}
-          eligibleReturnDates={eligibleReturnDates}
-          onConfirm={(type, returnEntry, note) =>
-            sendRequest(type, requestModal.myDate, requestModal.myDuty, returnEntry, note)
+          onConfirm={(type, note) =>
+            sendRequest(type, requestModal.myDate, requestModal.myDuty, note)
           }
           onClose={() => setRequestModal(null)}
         />
