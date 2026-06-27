@@ -372,21 +372,50 @@ export default function App() {
       .single();
     if (error) { console.error("postOT:", error); return; }
 
-    // Look up the roster for this date and auto-decline ineligible members
+    // Look up roster for this date + look-ahead and auto-decline ineligible members.
+    // Rules from the roster context:
+    //   - ot_available=false on day X                  → unavailable
+    //   - N or NW base_duty on day X+1                 → unavailable (shift starts that evening)
+    //   - N or NW base_duty on day X+2 AND offer is not N/NW → unavailable (needs rest before night shift)
     if (rosterDate) {
+      // Helper: add n calendar days to a YYYY-MM-DD string (UTC-safe)
+      function addDays(isoDate, n) {
+        const [y, mo, d] = isoDate.split("-").map(Number);
+        return new Date(Date.UTC(y, mo - 1, d + n)).toISOString().slice(0, 10);
+      }
+      const dateX  = rosterDate;
+      const dateX1 = addDays(rosterDate, 1);
+      const dateX2 = addDays(rosterDate, 2);
+
       const { data: rosterRows } = await supabase
         .from("roster_availability")
-        .select("engineer, ot_available")
-        .eq("date", rosterDate);
+        .select("date, engineer, ot_available, base_duty")
+        .in("date", [dateX, dateX1, dateX2]);
 
       if (rosterRows && rosterRows.length > 0) {
-        // Build a Set of initials that the roster explicitly marks as unavailable
-        const unavailable = new Set(
-          rosterRows.filter(r => !r.ot_available).map(r => r.engineer)
-        );
+        // Group by date so look-ahead can check X+1 and X+2 separately
+        const byDate = {};
+        for (const r of rosterRows) {
+          if (!byDate[r.date]) byDate[r.date] = {};
+          byDate[r.date][r.engineer] = r;
+        }
+        const rX  = byDate[dateX]  || {};
+        const rX1 = byDate[dateX1] || {};
+        const rX2 = byDate[dateX2] || {};
 
-        // Auto-decline active members whose roster entry says they're on shift
-        const toDecline = team.filter(m => m.active !== false && unavailable.has(m.name));
+        const nightDuties  = new Set(["N", "NW"]);
+        const offerIsNight = nightDuties.has(shiftType);
+
+        const toDecline = team.filter(m => {
+          if (m.active === false) return false;
+          // Explicitly not available on the offer date
+          if (rX[m.name] && !rX[m.name].ot_available)                               return true;
+          // Starting a night shift the same evening as the offer date
+          if (rX1[m.name] && nightDuties.has(rX1[m.name].base_duty))                return true;
+          // Starting a night shift in two days — needs rest, eligible for N/NW OT only
+          if (rX2[m.name] && nightDuties.has(rX2[m.name].base_duty) && !offerIsNight) return true;
+          return false;
+        });
 
         if (toDecline.length > 0) {
           const autoDeclines = toDecline.map(m => ({
