@@ -30,19 +30,6 @@ import "./styles.css";
 
 const CURRENT_USER_KEY = "ot-current-user";
 
-// ─── Notification helpers ─────────────────────────────────────────────────
-
-async function requestNotificationPermission() {
-  if ("Notification" in window && Notification.permission === "default") {
-    await Notification.requestPermission();
-  }
-}
-
-function showNotification(title, body) {
-  if ("Notification" in window && Notification.permission === "granted") {
-    new Notification(title, { body, icon: "/icon.svg" });
-  }
-}
 
 // ─── Password hashing ────────────────────────────────────────────────────
 // SHA-256 via Web Crypto API. Only the hash is stored; never plain text.
@@ -217,43 +204,69 @@ export default function App() {
   }, []);
 
   // Fetches all open offers AND recently closed/cancelled (last 30 min).
-  // The "recent" ones are shown in Board as result banners.
-  // Note: we avoid FK join syntax (winner:team_members!winner_id) because it
-  // depends on the constraint name and can silently return null if mismatched.
-  // Winner names are resolved from the team array inside Board instead.
+  // Uses flat select("*") with no embedded joins (joins can silently return null
+  // if FK constraint names don't match). Responses are fetched separately and
+  // merged in JS so the Board can show who has responded to each offer.
   const fetchActiveOffers = useCallback(async () => {
     const thirtyMinsAgo = new Date(Date.now() - 30 * 60_000).toISOString();
 
     const [openRes, recentRes] = await Promise.all([
-      supabase
-        .from("ot_offers")
-        .select("*, ot_responses(*)")
-        .eq("status", "open")
-        .order("created_at", { ascending: true }),
-      supabase
-        .from("ot_offers")
-        .select("*, ot_responses(*)")
-        .in("status", ["closed", "cancelled"])
-        .gte("closed_at", thirtyMinsAgo)
-        .order("closed_at", { ascending: false })
-        .limit(10),
+      supabase.from("ot_offers").select("*").eq("status", "open").order("created_at", { ascending: true }),
+      supabase.from("ot_offers").select("*").in("status", ["closed", "cancelled"]).gte("closed_at", thirtyMinsAgo).order("closed_at", { ascending: false }).limit(10),
     ]);
 
     if (openRes.error)   console.error("fetchActiveOffers (open):",   openRes.error);
     if (recentRes.error) console.error("fetchActiveOffers (recent):", recentRes.error);
 
-    setActiveOffers([...(openRes.data || []), ...(recentRes.data || [])]);
+    const allOffers = [...(openRes.data || []), ...(recentRes.data || [])];
+
+    if (allOffers.length === 0) { setActiveOffers([]); return; }
+
+    // Fetch responses for these offers in one flat query — no FK joins needed
+    const offerIds = allOffers.map(o => o.id);
+    const { data: responses, error: respErr } = await supabase
+      .from("ot_responses")
+      .select("*")
+      .in("offer_id", offerIds);
+
+    if (respErr) console.error("fetchActiveOffers (responses):", respErr);
+
+    // Group responses by offer_id and attach to each offer
+    const byOffer = {};
+    for (const r of (responses || [])) {
+      if (!byOffer[r.offer_id]) byOffer[r.offer_id] = [];
+      byOffer[r.offer_id].push(r);
+    }
+
+    setActiveOffers(allOffers.map(o => ({ ...o, ot_responses: byOffer[o.id] || [] })));
   }, []);
 
   const fetchHistory = useCallback(async () => {
     const { data, error } = await supabase
       .from("ot_offers")
-      .select("*, ot_responses(*)")
+      .select("*")
       .in("status", ["closed", "cancelled"])
       .order("closed_at", { ascending: false })
       .limit(50);
     if (error) { console.error("fetchHistory:", error); return; }
-    setHistory(data);
+
+    if (!data || data.length === 0) { setHistory([]); return; }
+
+    // Fetch responses separately — same flat-query pattern as fetchActiveOffers
+    const offerIds = data.map(o => o.id);
+    const { data: responses, error: respErr } = await supabase
+      .from("ot_responses")
+      .select("*")
+      .in("offer_id", offerIds);
+    if (respErr) console.error("fetchHistory (responses):", respErr);
+
+    const byOffer = {};
+    for (const r of (responses || [])) {
+      if (!byOffer[r.offer_id]) byOffer[r.offer_id] = [];
+      byOffer[r.offer_id].push(r);
+    }
+
+    setHistory(data.map(o => ({ ...o, ot_responses: byOffer[o.id] || [] })));
   }, []);
 
   // ── Mount: load data + realtime subscriptions + auto-close timer ────────
@@ -269,19 +282,14 @@ export default function App() {
       .then(() => autoCloseExpired())  // check on mount in case window lapsed while app was closed
       .finally(() => setLoading(false));
 
-    requestNotificationPermission();
-
     // Realtime: refresh data whenever DB tables change
     const channel = supabase
       .channel("overtime-changes")
       .on("postgres_changes", { event: "*", schema: "public", table: "team_members" }, () => fetchTeam())
       .on("postgres_changes", { event: "*", schema: "public", table: "admins" }, () => fetchAdmins())
-      .on("postgres_changes", { event: "*", schema: "public", table: "ot_offers" }, (payload) => {
+      .on("postgres_changes", { event: "*", schema: "public", table: "ot_offers" }, () => {
         fetchActiveOffers();
         fetchHistory();
-        if (payload.eventType === "INSERT" && payload.new?.status === "open") {
-          showNotification("⚡ New Overtime Available", payload.new.description);
-        }
       })
       .on("postgres_changes", { event: "*", schema: "public", table: "ot_responses" }, () => fetchActiveOffers())
       .subscribe();
