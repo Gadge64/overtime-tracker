@@ -699,7 +699,7 @@ export default function App() {
           />
         )}
 
-        {tab === "about" && <About />}
+        {tab === "about" && <About isMember={!isAdmin} />}
 
       </div>
     </div>

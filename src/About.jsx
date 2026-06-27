@@ -6,7 +6,7 @@
 // Written so a new engineer can pick it up with no handover.
 // ============================================================
 
-export default function About() {
+export default function About({ isMember = false }) {
   return (
     <div style={{ paddingBottom: 40 }}>
 
@@ -42,12 +42,12 @@ export default function About() {
       {/* ── The tabs ───────────────────────────────────────── */}
       <div className="section-title">The tabs</div>
       <div className="card">
-        <Row label="Board"       text="The main screen. Shows all live OT offers, each with a respond button, and the priority board showing everyone's accumulated hours." />
-        <Row label="Post OT"     text="Co-ordinators only. Post a new overtime opportunity by picking a date, selecting a shift preset, and submitting. Includes a roster check showing who will be auto-declined before you post." />
-        <Row label="Roster"      text="Team members only. View your shift schedule week by week, compare your schedule with a colleague, and send Swap or UDR requests directly through the app." />
-        <Row label="History"     text="A log of every past OT offer — who was awarded it, how long the shift was, and how many people opted in or declined." />
-        <Row label="Setup"       text="Manage the team roster: add members (with auto-generated PINs), rename, suspend, or remove. Co-ordinator accounts and passwords are managed here too." />
-        <Row label="About"       text="This page." last />
+        <Row label="Board"    text="The main screen. Shows all live OT offers, each with a respond button, and the priority board showing everyone's accumulated hours." />
+        <Row label="Post OT"  text="Co-ordinators only. Post a new overtime opportunity by picking a date, selecting a shift preset, and submitting. Includes a roster check showing who will be auto-declined before you post." />
+        {isMember && <Row label="Roster"  text="View your shift schedule week by week, compare your schedule with a colleague, and send Swap or UDR requests directly through the app." />}
+        <Row label="History"  text="A log of every past OT offer — who was awarded it, how long the shift was, and how many people opted in or declined." />
+        <Row label="Setup"    text="Manage the team roster: add members (with auto-generated PINs), rename, suspend, or remove. Co-ordinator accounts and passwords are managed here too." />
+        <Row label="About"    text="This page." last />
       </div>
 
       {/* ── Shift presets ──────────────────────────────────── */}
@@ -153,48 +153,51 @@ export default function About() {
         </div>
       </div>
 
-      {/* ── Swap / UDR checker ──────────────────────────────── */}
-      <div className="section-title">Swap / UDR checker</div>
-      <div className="card">
-        <p style={p}>
-          The <strong style={teal}>Roster tab</strong> (team members only) lets you see your shift
-          schedule week by week and compare it with a colleague's. This is the starting point
-          for arranging a <strong>Swap</strong> or an <strong>UDR</strong>.
-        </p>
+      {/* ── Swap / UDR checker — members only, not shown to co-ordinators ── */}
+      {isMember && (
+        <>
+          <div className="section-title">Swap / UDR checker</div>
+          <div className="card">
+            <p style={p}>
+              The <strong style={teal}>Roster tab</strong> lets you see your shift schedule week by week
+              and compare it with a colleague's. This is the starting point for arranging a <strong>Swap</strong> or a <strong>UDR</strong>.
+            </p>
 
-        <div style={{ marginBottom: 14, paddingBottom: 14, borderBottom: "1px solid #e1e8e6" }}>
-          <div style={{ fontSize: 12, fontWeight: 700, color: "#042d2d", marginBottom: 4, textTransform: "uppercase", letterSpacing: 1 }}>Straight Swap</div>
-          <p style={{ ...p, marginBottom: 0 }}>
-            Two engineers agree to cover each other's shifts on different dates. There is no requirement
-            that the shifts are the same type — for example, an SBY can be swapped with an N.
-            When you send a Swap request, no return date needs to be specified upfront.
-            If the partner accepts, they bank the return shift and call it in whenever suits them.
-          </p>
-        </div>
+            <div style={{ marginBottom: 14, paddingBottom: 14, borderBottom: "1px solid #e1e8e6" }}>
+              <div style={{ fontSize: 12, fontWeight: 700, color: "#042d2d", marginBottom: 4, textTransform: "uppercase", letterSpacing: 1 }}>Straight Swap</div>
+              <p style={{ ...p, marginBottom: 0 }}>
+                Two engineers agree to cover each other's shifts on different dates. There is no requirement
+                that the shifts are the same type — for example, an SBY can be swapped with an N.
+                When you send a Swap request, no return date needs to be specified upfront.
+                If the partner accepts, they bank the return shift and call it in whenever suits them.
+              </p>
+            </div>
 
-        <div style={{ marginBottom: 14, paddingBottom: 14, borderBottom: "1px solid #e1e8e6" }}>
-          <div style={{ fontSize: 12, fontWeight: 700, color: "#042d2d", marginBottom: 4, textTransform: "uppercase", letterSpacing: 1 }}>UDR — Urgent Domestic Request</div>
-          <p style={{ ...p, marginBottom: 0 }}>
-            This is essentially a day of annual leave where cover is arranged directly between two
-            engineers rather than going through official leave management. One engineer covers the other's
-            shift — no reciprocal is required. A UDR request is one-way: the person taking the day off
-            sends the request; the covering engineer accepts or declines.
-          </p>
-        </div>
+            <div style={{ marginBottom: 14, paddingBottom: 14, borderBottom: "1px solid #e1e8e6" }}>
+              <div style={{ fontSize: 12, fontWeight: 700, color: "#042d2d", marginBottom: 4, textTransform: "uppercase", letterSpacing: 1 }}>UDR — Urgent Domestic Request</div>
+              <p style={{ ...p, marginBottom: 0 }}>
+                Essentially a day of annual leave where cover is arranged directly between two engineers,
+                without going through official leave management. One engineer covers the other's shift
+                with no reciprocal required. The person taking the day off sends the request; their
+                colleague accepts or declines.
+              </p>
+            </div>
 
-        <div style={{ fontSize: 12, fontWeight: 700, color: "#042d2d", marginBottom: 6, textTransform: "uppercase", letterSpacing: 1 }}>How to use it</div>
-        <Step n="1" text="Go to the Roster tab and navigate to the relevant week with the ◀ ▶ arrows." />
-        <Step n="2" text="Open the 'Swap / UDR checker' section and pick a colleague from the dropdown." />
-        <Step n="3" text="Your schedules appear side by side. 'Request →' appears on any day where they're free and you have a shift they could cover. 'You free' appears where the opposite is true." />
-        <Step n="4" text="Tap 'Request →' on the shift you'd like covered. Choose Swap (return banked, no date needed) or UDR (one-way, no return at all). Add an optional note and send." />
-        <Step n="5" text="Your colleague sees a pending request on their Roster tab. They tap Accept or Decline." last />
+            <div style={{ fontSize: 12, fontWeight: 700, color: "#042d2d", marginBottom: 6, textTransform: "uppercase", letterSpacing: 1 }}>How to use it</div>
+            <Step n="1" text="Go to the Roster tab and navigate to the relevant week with the ◀ ▶ arrows." />
+            <Step n="2" text="Open the 'Swap / UDR checker' section and pick a colleague from the dropdown." />
+            <Step n="3" text="Your schedules appear side by side. 'Request →' appears on any day where they're free and you have a shift they could cover. 'You free' appears where the opposite is true." />
+            <Step n="4" text="Tap 'Request →' on the shift you'd like covered. Choose Swap (return banked, no date needed) or UDR (one-way, no return at all). Add an optional note and send." />
+            <Step n="5" text="Your colleague sees the pending request on their Roster tab and taps Accept or Decline." last />
 
-        <div style={{ marginTop: 10, fontSize: 12, color: "#7a8c8a", lineHeight: 1.6 }}>
-          <strong style={teal}>Note:</strong> The swap checker uses the roster's rest-day (R) flag to determine
-          availability. Night shift overlap rules (the same checks as OT auto-decline) still apply in practice
-          — check those yourself before finalising a night shift swap.
-        </div>
-      </div>
+            <div style={{ marginTop: 10, fontSize: 12, color: "#7a8c8a", lineHeight: 1.6 }}>
+              <strong style={teal}>Note:</strong> The checker uses the roster's rest-day (R) flag to determine
+              availability. Night shift overlap rules still apply in practice — check those yourself before
+              finalising a night shift swap.
+            </div>
+          </div>
+        </>
+      )}
 
       {/* ── The OT offer flow ──────────────────────────────── */}
       <div className="section-title">How an OT offer works — step by step</div>
