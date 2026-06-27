@@ -20,7 +20,7 @@
 //   onCancelOT   — fn(offerId)
 // ============================================================
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 
 // ─── Helpers ──────────────────────────────────────────────────────────────
 
@@ -48,6 +48,25 @@ function fmtHours(h) {
 // Format score (accumulated hours) for display
 function fmtScore(s) {
   return Number(s || 0).toFixed(1);
+}
+
+// Live countdown that re-renders every 30 s
+function Countdown({ closesAt }) {
+  const [, tick] = useState(0);
+  useEffect(() => {
+    const id = setInterval(() => tick(n => n + 1), 30_000);
+    return () => clearInterval(id);
+  }, []);
+
+  if (!closesAt) return <span>⏱ No automatic window — award manually when ready</span>;
+
+  const diff = new Date(closesAt) - Date.now();
+  if (diff <= 0) return <span>⏱ Closing…</span>;
+
+  const totalMins = Math.floor(diff / 60_000);
+  if (totalMins < 60) return <span>⏱ Closes in {totalMins}m</span>;
+  const h = Math.floor(totalMins / 60), m = totalMins % 60;
+  return <span>⏱ Closes in {h}h{m > 0 ? ` ${m}m` : ""}</span>;
 }
 
 // ─── Per-person history modal ─────────────────────────────────────────────
@@ -135,14 +154,13 @@ function OfferCard({ offer, ranked, currentUser, currentUserIsActive, isAdmin, o
   // changing=true shows the buttons again so the member can update their response
   const [changing, setChanging] = useState(false);
 
-  // Window label shown at the top of the card
-  let windowLabel = null;
-  if (offer.closes_at) {
-    const t = new Date(offer.closes_at);
-    windowLabel = `⏱ Window closes: ${t.toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" })} · ${t.toLocaleDateString("en-GB", { day: "numeric", month: "short" })}`;
-  } else {
-    windowLabel = "⏱ No automatic window — award manually when ready";
-  }
+  // Absolute close time shown alongside the live countdown (for context)
+  const closeTimeLabel = offer.closes_at
+    ? (() => {
+        const t = new Date(offer.closes_at);
+        return `${t.toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" })} · ${t.toLocaleDateString("en-GB", { day: "numeric", month: "short" })}`;
+      })()
+    : null;
 
   // Shift time range display
   const shiftTimeLabel = (() => {
@@ -190,7 +208,8 @@ function OfferCard({ offer, ranked, currentUser, currentUserIsActive, isAdmin, o
       )}
 
       <div style={{ fontSize: 11, color: "#7a8c8a", marginTop: 4, marginBottom: 12 }}>
-        {windowLabel}
+        <Countdown closesAt={offer.closes_at} />
+        {closeTimeLabel && <span style={{ marginLeft: 6, opacity: 0.7 }}>({closeTimeLabel})</span>}
         {pendingCount > 0 && (
           <span style={{ marginLeft: 10 }}>· {pendingCount} member{pendingCount !== 1 ? "s" : ""} yet to respond</span>
         )}
@@ -414,18 +433,19 @@ export default function Board({ team, history, activeOffers, currentUser, onResp
 
       {/* ── Priority board ─────────────────────────────────── */}
       <div className="section-title">Priority board — fewest hours goes first</div>
-      {isAdmin && (
-        <div style={{ fontSize: 11, color: "#9aa8a6", marginBottom: 10 }}>
-          Tap a name to see their overtime history.
-        </div>
-      )}
+      <div style={{ fontSize: 11, color: "#9aa8a6", marginBottom: 10 }}>
+        {isAdmin ? "Tap any name to see their overtime history." : "Tap your name to see your overtime history."}
+      </div>
 
-      {ranked.map((m, i) => (
+      {ranked.map((m, i) => {
+        const isMe       = m.id === currentUser.id;
+        const canTap     = isAdmin || isMe;
+        return (
         <div
           key={m.id}
           className="card"
-          style={{ display: "flex", alignItems: "center", gap: 14, cursor: isAdmin ? "pointer" : "default" }}
-          onClick={() => isAdmin && setSelectedMember(m)}
+          style={{ display: "flex", alignItems: "center", gap: 14, cursor: canTap ? "pointer" : "default" }}
+          onClick={() => canTap && setSelectedMember(m)}
         >
           <div className={`rank-num ${i === 0 ? "top" : ""}`}>
             {String(i + 1).padStart(2, "0")}
@@ -449,7 +469,8 @@ export default function Board({ team, history, activeOffers, currentUser, onResp
             <div style={{ fontSize: 9, color: "#9aa8a6", letterSpacing: 1, fontWeight: 600 }}>HRS</div>
           </div>
         </div>
-      ))}
+        );
+      })}
 
       {/* Per-person history modal */}
       {selectedMember && (

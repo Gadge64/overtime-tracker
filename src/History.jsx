@@ -45,8 +45,15 @@ export default function History({ history, team, currentUser }) {
       <div className="section-title">Past overtime offers</div>
 
       {history.map(h => {
-        const yesCount   = h.ot_responses?.filter(r => r.answer === "yes").length ?? 0;
-        const noCount    = h.ot_responses?.filter(r => r.answer === "no").length ?? 0;
+        const responses      = h.ot_responses ?? [];
+        const autoDeclined   = responses.filter(r => r.auto_declined).length;
+        const yesCount       = responses.filter(r => r.answer === "yes"  && !r.auto_declined).length;
+        const noCount        = responses.filter(r => r.answer === "no"   && !r.auto_declined).length;
+        const activeMembers  = team?.filter(m => m.active !== false).length ?? 0;
+        // Eligible = active members minus anyone auto-declined (they couldn't respond)
+        const eligible       = Math.max(0, activeMembers - autoDeclined);
+        const responded      = yesCount + noCount;
+        const noResponse     = Math.max(0, eligible - responded);
         // Resolve winner name from team prop (avoids needing a FK join in the query)
         const winnerName = h.winner_id ? team?.find(m => m.id === h.winner_id)?.name : null;
 
@@ -86,9 +93,12 @@ export default function History({ history, team, currentUser }) {
             )}
 
             {/* Response breakdown */}
-            {(yesCount > 0 || noCount > 0) && (
-              <div style={{ marginTop: 6, fontSize: 11, color: "#9aa8a6" }}>
-                {yesCount} opted in · {noCount} declined
+            {responses.length > 0 && (
+              <div style={{ marginTop: 6, fontSize: 11, color: "#9aa8a6", display: "flex", flexWrap: "wrap", gap: "0 12px" }}>
+                {yesCount   > 0 && <span style={{ color: "#1f8a5f" }}>✓ {yesCount} opted in</span>}
+                {noCount    > 0 && <span>✗ {noCount} declined</span>}
+                {autoDeclined > 0 && <span>⊘ {autoDeclined} auto-declined</span>}
+                {noResponse > 0 && <span>— {noResponse} no response</span>}
               </div>
             )}
 

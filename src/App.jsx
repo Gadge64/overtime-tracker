@@ -177,6 +177,8 @@ export default function App() {
   const [loading,      setLoading]      = useState(true);
   // toast: { message, type } | null — shown for 4s when a shift is auto-awarded
   const [toast, setToast] = useState(null);
+  // Count of pending swap/UDR requests for the current member (drives Roster tab badge)
+  const [pendingSwapCount, setPendingSwapCount] = useState(0);
   // teamRef lets the realtime callback look up winner names without a stale closure
   const teamRef = useRef([]);
 
@@ -321,6 +323,26 @@ export default function App() {
       clearInterval(timer);
     };
   }, [fetchTeam, fetchAdmins, fetchActiveOffers, fetchHistory, autoCloseExpired]);
+
+  // ── Pending swap/UDR count for Roster tab badge ─────────────────────────
+
+  useEffect(() => {
+    if (!currentUser || currentUser.role === "admin") { setPendingSwapCount(0); return; }
+
+    async function fetchCount() {
+      const { count } = await supabase
+        .from("swaps")
+        .select("id", { count: "exact", head: true })
+        .eq("partner_id", currentUser.id)
+        .eq("status", "pending");
+      setPendingSwapCount(count ?? 0);
+    }
+
+    fetchCount();
+    // Re-check every 60 s so the badge stays current without full-page reload
+    const id = setInterval(fetchCount, 60_000);
+    return () => clearInterval(id);
+  }, [currentUser]);
 
   // ── Keep currentUser in sync with DB changes ────────────────────────────
 
@@ -649,6 +671,17 @@ export default function App() {
         ].map(([key, label]) => (
           <button key={key} className={`tab-btn ${tab === key ? "active" : ""}`} onClick={() => setTab(key)}>
             {label}
+            {key === "roster" && pendingSwapCount > 0 && (
+              <span style={{
+                display: "inline-flex", alignItems: "center", justifyContent: "center",
+                background: "#c0392b", color: "#fff",
+                fontSize: 9, fontWeight: 700, lineHeight: 1,
+                minWidth: 15, height: 15, borderRadius: 8,
+                marginLeft: 4, padding: "0 3px",
+              }}>
+                {pendingSwapCount}
+              </span>
+            )}
           </button>
         ))}
       </div>

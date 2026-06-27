@@ -271,6 +271,15 @@ export default function Roster({ currentUser, team }) {
     }
   }
 
+  // Marks a banked swap as settled — either party can confirm the return was done
+  async function settleSwap(id) {
+    const { error } = await supabase
+      .from("swaps")
+      .update({ settled_at: new Date().toISOString() })
+      .eq("id", id);
+    if (!error) { setToast("Swap marked as settled."); fetchHistory(); }
+  }
+
   // ── Coverage helper ──────────────────────────────────────────────────────
 
   // Returns: "they-cover-me" | "i-cover-them" | "both-free" | null
@@ -377,14 +386,29 @@ export default function Roster({ currentUser, team }) {
               ? team.find(m => m.id === rec.requester_id)?.name
               : team.find(m => m.id === rec.partner_id)?.name;
 
-            const typeLabel = rec.type === "udr" ? "UDR" : "Swap";
-            const typeColour = rec.type === "udr" ? "#2471a3" : "#7d3c98";
+            const isSwap     = rec.type === "swap";
+            const isUDR      = rec.type === "udr";
+            const isSettled  = !!rec.settled_at;
+            const typeLabel  = isUDR ? "UDR" : "Swap";
+            const typeColour = isUDR ? "#2471a3" : isSettled ? "#9aa8a6" : "#7d3c98";
+
+            // Swap return is outstanding if: it's a swap, not yet settled, and either
+            // party still has an obligation (shown differently per side)
+            const returnOutstanding = isSwap && !isSettled;
 
             return (
-              <div key={rec.id} className="card" style={{ borderLeft: `3px solid ${typeColour}` }}>
+              <div key={rec.id} className="card" style={{
+                borderLeft: `3px solid ${typeColour}`,
+                opacity: isSettled ? 0.65 : 1,
+              }}>
                 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 4 }}>
-                  <div style={{ fontSize: 11, fontWeight: 700, color: typeColour, textTransform: "uppercase", letterSpacing: 1 }}>
-                    {typeLabel}
+                  <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                    <div style={{ fontSize: 11, fontWeight: 700, color: typeColour, textTransform: "uppercase", letterSpacing: 1 }}>
+                      {typeLabel}
+                    </div>
+                    {isSettled && (
+                      <span style={{ fontSize: 10, color: "#1f8a5f", fontWeight: 700 }}>✓ Settled</span>
+                    )}
                   </div>
                   {rec.responded_at && (
                     <div style={{ fontSize: 10, color: "#9aa8a6" }}>
@@ -395,19 +419,17 @@ export default function Roster({ currentUser, team }) {
 
                 <div style={{ fontSize: 13, color: "#1a2e2e", lineHeight: 1.6 }}>
                   {iCovered ? (
-                    // I covered someone else's shift
                     <>
                       You covered <strong>{otherName}</strong>'s <strong>{rec.requester_duty}</strong> on <strong>{fmtDate(rec.requester_date)}</strong>
-                      {rec.type === "swap" && (
-                        <span style={{ color: "#7d3c98" }}> — return shift owed by {otherName}</span>
+                      {returnOutstanding && (
+                        <span style={{ color: "#7d3c98" }}> — return owed by {otherName}</span>
                       )}
                     </>
                   ) : (
-                    // My shift was covered by someone else
                     <>
                       <strong>{otherName}</strong> covered your <strong>{rec.requester_duty}</strong> on <strong>{fmtDate(rec.requester_date)}</strong>
-                      {rec.type === "swap" && (
-                        <span style={{ color: "#7d3c98" }}> — you owe {otherName} a return shift</span>
+                      {returnOutstanding && (
+                        <span style={{ color: "#7d3c98" }}> — you owe {otherName} a return</span>
                       )}
                     </>
                   )}
@@ -415,6 +437,17 @@ export default function Roster({ currentUser, team }) {
 
                 {rec.note && (
                   <div style={{ fontSize: 11, color: "#7a8c8a", marginTop: 4, fontStyle: "italic" }}>"{rec.note}"</div>
+                )}
+
+                {/* Either party can mark a banked swap as settled once the return is done */}
+                {returnOutstanding && (
+                  <button
+                    className="btn"
+                    style={{ marginTop: 10, fontSize: 11, padding: "4px 12px", color: "#7d3c98", borderColor: "#7d3c98" }}
+                    onClick={() => settleSwap(rec.id)}
+                  >
+                    Mark as settled
+                  </button>
                 )}
               </div>
             );
