@@ -398,12 +398,11 @@ export default function App() {
       const dateXm1 = addDays(rosterDate, -1);
       const dateX   = rosterDate;
       const dateX1  = addDays(rosterDate, 1);
-      const dateX2  = addDays(rosterDate, 2);
 
       // Fetch X-1 only for night offers (it's the physical start evening)
       const datesToFetch = offerIsNight
-        ? [dateXm1, dateX, dateX1, dateX2]
-        : [dateX, dateX1, dateX2];
+        ? [dateXm1, dateX, dateX1]
+        : [dateX, dateX1];
 
       const { data: rosterRows } = await supabase
         .from("roster_availability")
@@ -420,7 +419,6 @@ export default function App() {
         const rXm1 = byDate[dateXm1] || {};
         const rX   = byDate[dateX]   || {};
         const rX1  = byDate[dateX1]  || {};
-        const rX2  = byDate[dateX2]  || {};
 
         // Returns a human-readable reason string for why a member is ineligible,
         // or null if they are eligible. Checked in priority order so the most
@@ -428,9 +426,13 @@ export default function App() {
         function declineReason(m) {
           if (m.active === false) return null;
 
-          // Day X: explicitly unavailable per roster
+          // Anyone with no roster entry for the offer date is not in the current
+          // roster cycle and is not eligible — regardless of other checks.
           const dayX = rX[m.name];
-          if (dayX && !dayX.ot_available) {
+          if (!dayX) return "Not in the current roster";
+
+          // Day X: explicitly unavailable per roster flag
+          if (!dayX.ot_available) {
             const s = dayX.status, d = dayX.base_duty;
             if (s === "AL_SHIFT" || s === "AL_REST") return "On annual leave";
             if (s === "COVER_ACTIVE")                return "On cover duty";
@@ -438,17 +440,12 @@ export default function App() {
             return `On ${d} shift`;
           }
 
-          // Day X+1: night shift that physically starts the evening of the offer date
+          // Day X+1: night shift starts the same evening as the OT offer date
           const dayX1 = rX1[m.name];
           if (dayX1 && nightDuties.has(dayX1.base_duty))
             return `${dayX1.base_duty} shift starts tomorrow evening`;
 
-          // Day X+2: night shift in two days — daytime OT blocked, needs rest
-          const dayX2 = rX2[m.name];
-          if (dayX2 && nightDuties.has(dayX2.base_duty) && !offerIsNight)
-            return `${dayX2.base_duty} shift in 2 days — rest needed before going in`;
-
-          // Day X-1 (N/NW offers): evening shift overlaps night start by 15 min
+          // Day X-1 (N/NW offers only): E/EW/E* the previous evening overlaps by 15 min
           if (offerIsNight) {
             const xm1Duty = rXm1[m.name]?.base_duty;
             if (xm1Duty && ["E", "EW", "E*"].includes(xm1Duty)) {

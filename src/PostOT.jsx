@@ -101,27 +101,25 @@ function previewDeclineReason(member, shiftType, rosterByDate, rosterDate) {
   const isNightOffer = NIGHT.has(shiftType);
   const dateXm1 = addDaysISO(rosterDate, -1);
   const dateX1  = addDaysISO(rosterDate,  1);
-  const dateX2  = addDaysISO(rosterDate,  2);
-  const rX   = (rosterByDate[rosterDate]  || {})[member.name];
-  const rXm1 = (rosterByDate[dateXm1]     || {})[member.name];
-  const rX1  = (rosterByDate[dateX1]      || {})[member.name];
-  const rX2  = (rosterByDate[dateX2]      || {})[member.name];
+  const rX   = (rosterByDate[rosterDate] || {})[member.name];
+  const rXm1 = (rosterByDate[dateXm1]    || {})[member.name];
+  const rX1  = (rosterByDate[dateX1]     || {})[member.name];
 
-  // Day X: check if member is already committed
-  if (rX && !rX.ot_available) {
+  // No roster entry for the offer date = not in the current roster cycle
+  if (!rX) return "Not in the current roster";
+
+  // Day X: explicitly unavailable
+  if (!rX.ot_available) {
     const s = rX.status, d = rX.base_duty;
     if (s === "AL_SHIFT" || s === "AL_REST") return "On annual leave";
     if (s === "COVER_ACTIVE")                return "On cover duty";
     if (s === "OT_RECORD")                   return "Already on an OT shift";
     return `On ${d} shift`;
   }
-  // X+1: N or NW starts that evening
+  // X+1: N or NW starts the same evening as the offer date
   if (rX1 && NIGHT.has(rX1.base_duty))
     return `${rX1.base_duty} shift starts tomorrow evening`;
-  // X+2: N or NW blocks daytime OT only
-  if (rX2 && NIGHT.has(rX2.base_duty) && !isNightOffer)
-    return `${rX2.base_duty} shift in 2 days — rest needed before nights`;
-  // X-1 look-back: E/EW/E* on the evening before a night offer overlaps by 15 min
+  // X-1 look-back: E/EW/E* the previous evening overlaps night start by 15 min
   if (isNightOffer && rXm1 && ["E","EW","E*"].includes(rXm1.base_duty)) {
     const ends = rXm1.base_duty === "E" ? "22:15" : "20:15";
     return `${rXm1.base_duty} shift runs until ${ends} — overlaps with night start`;
@@ -203,8 +201,8 @@ export default function PostOT({ onPost, team = [] }) {
     async function fetchPreview() {
       const isNight = NIGHT.has(shiftType);
       const dates = isNight
-        ? [addDaysISO(shiftDate,-1), shiftDate, addDaysISO(shiftDate,1), addDaysISO(shiftDate,2)]
-        : [shiftDate, addDaysISO(shiftDate,1), addDaysISO(shiftDate,2)];
+        ? [addDaysISO(shiftDate,-1), shiftDate, addDaysISO(shiftDate,1)]
+        : [shiftDate, addDaysISO(shiftDate,1)];
 
       const { data } = await supabase
         .from("roster_availability")

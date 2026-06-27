@@ -95,17 +95,28 @@ export default function About({ isMember = false }) {
           on the Board with the reason shown underneath — no action is needed from you.
         </p>
         <p style={p}>
-          Four checks are applied, covering a window of up to four days around the offer date.
-          The offer date is called <strong style={teal}>X</strong>.
+          Three checks are applied around the offer date (called <strong style={teal}>X</strong>),
+          plus a membership check.
         </p>
+
+        {/* Check 0 — roster membership */}
+        <EligRow
+          title="Roster membership"
+          colour="#7a8c8a"
+          text="Only engineers who appear in the current roster cycle are eligible. Anyone without a roster entry for the offer date is auto-declined regardless of other checks."
+          examples={[
+            { outcome: "❌", text: "No roster entry for date X → auto-declined (Not in the current roster)" },
+            { outcome: "✅", text: "Has a roster entry → proceeds to the checks below" },
+          ]}
+        />
 
         {/* Check 1 */}
         <EligRow
           title="Day X — the offer itself"
           colour="#1f8a5f"
-          text="Your roster entry for the offer date is checked first. If you're already committed to a shift, on annual leave, on a cover duty, or already working an OT shift, you're auto-declined immediately."
+          text="Your roster entry for the offer date is checked. If you're already committed to a shift, on annual leave, on cover duty, or already working an OT shift, you're auto-declined."
           examples={[
-            { outcome: "❌", text: "On annual leave → auto-declined (On annual leave)" },
+            { outcome: "❌", text: "On annual leave → auto-declined" },
             { outcome: "❌", text: "On any shift (E, D1, N, NW, SBY, EW, Cover…) → auto-declined with that shift code as the reason" },
             { outcome: "✅", text: "On a rest day (R) → eligible to respond" },
           ]}
@@ -115,34 +126,23 @@ export default function About({ isMember = false }) {
         <EligRow
           title="Day X+1 — the day after"
           colour="#2471a3"
-          text="If you have an N or NW shift scheduled for the following calendar day, you're auto-declined. Both N and NW are night shifts that start in the evening — the N starts at 22:00 and NW at 20:00 on the same evening as the OT offer's calendar date."
+          text="If you have an N or NW shift on the following calendar day, you're auto-declined. N starts at 22:00 and NW at 20:00 on the same evening as the OT offer date — so your free time runs out that afternoon."
           examples={[
-            { outcome: "❌", text: "N or NW on X+1 → auto-declined (N/NW shift starts tomorrow evening)" },
-            { outcome: "✅", text: "Any other shift on X+1 → still eligible" },
+            { outcome: "❌", text: "N or NW on X+1 → auto-declined (shift starts tomorrow evening)" },
+            { outcome: "✅", text: "Any other shift on X+1, or N/NW on X+2 — fine, enough rest either way" },
           ]}
         />
 
         {/* Check 3 */}
         <EligRow
-          title="Day X+2 — two days after"
-          colour="#7d3c98"
-          text="If you have an N or NW in two days, you need the day before to rest before going on nights. For daytime OT, you're blocked. For an N or NW OT offer, you're still fine — the offer date is your last rest day before nights start."
-          examples={[
-            { outcome: "❌", text: "N or NW on X+2 AND the OT offer is a daytime shift → auto-declined (rest needed before nights)" },
-            { outcome: "✅", text: "N or NW on X+2 AND the OT offer is itself N or NW → eligible" },
-          ]}
-        />
-
-        {/* Check 4 */}
-        <EligRow
           title="Day X−1 look-back — night offers only"
           colour="#1a2e6e"
           last
-          text="For N and NW offers only, the evening before is also checked. N and NW shifts begin at 22:00 and 20:00 respectively on the evening before the calendar date (e.g. the NW rostered for Saturday actually starts at 20:00 Friday evening). If you finished an E (Evening, ends 22:15), EW (ends 20:15), or E* (ends 20:15) shift the previous evening, the shifts overlap by 15 minutes — by design in the roster. So you're auto-declined."
+          text="For N and NW offers only, the previous evening is also checked. N/NW shifts begin at 22:00/20:00 on the evening before their calendar date. If you worked E (ends 22:15), EW (ends 20:15), or E* (ends 20:15) the night before, the two shifts overlap by 15 minutes — by design in the roster."
           examples={[
-            { outcome: "❌", text: "E on X−1 → blocked for N or NW OT (E ends 22:15 — overlaps with N start at 22:00)" },
-            { outcome: "❌", text: "EW or E* on X−1 → blocked for N or NW OT (EW/E* ends 20:15 — overlaps with NW start at 20:00)" },
-            { outcome: "✅", text: "N or NW on X−1 → fine (that shift started the evening of X−2 and ended 08:15, leaving a full day's rest)" },
+            { outcome: "❌", text: "E on X−1 → blocked for N or NW OT (E ends 22:15, N starts 22:00 — 15 min overlap)" },
+            { outcome: "❌", text: "EW or E* on X−1 → blocked for N or NW OT (ends 20:15, NW starts 20:00 — 15 min overlap)" },
+            { outcome: "✅", text: "N or NW on X−1 → fine (that shift started evening of X−2 and ended 08:15, leaving a full day's rest)" },
           ]}
         />
 
