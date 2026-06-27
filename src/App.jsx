@@ -26,6 +26,7 @@ import PostOT  from "./PostOT";
 import History from "./History";
 import Setup   from "./Setup";
 import About   from "./About";
+import Roster  from "./Roster";
 import "./styles.css";
 
 const CURRENT_USER_KEY = "ot-current-user";
@@ -421,40 +422,57 @@ export default function App() {
         const rX1  = byDate[dateX1]  || {};
         const rX2  = byDate[dateX2]  || {};
 
-        const toDecline = team.filter(m => {
-          if (m.active === false) return false;
+        // Returns a human-readable reason string for why a member is ineligible,
+        // or null if they are eligible. Checked in priority order so the most
+        // immediate reason is shown (e.g. "on shift today" beats "night in 2 days").
+        function declineReason(m) {
+          if (m.active === false) return null;
 
-          // Basic: explicitly unavailable on the offer date
-          if (rX[m.name] && !rX[m.name].ot_available) return true;
-
-          // Look-ahead: starting a night shift that same evening (X+1 roster date)
-          if (rX1[m.name] && nightDuties.has(rX1[m.name].base_duty)) return true;
-
-          // Look-ahead: night shift in two days — must rest; daytime OT blocked
-          if (rX2[m.name] && nightDuties.has(rX2[m.name].base_duty) && !offerIsNight) return true;
-
-          // Look-back (N/NW offers only): the night shift physically starts on X-1
-          // evening (NW 20:00, N 22:00), so we must check what the engineer was
-          // doing on X-1.
-          //   E/EW/E* on X-1 → BLOCK: these end at 20:15–22:15, placing them
-          //     back-to-back with the night start (15-min overlap by design).
-          //   N/NW on X-1    → OK: that shift started X-2 evening and ended at
-          //     08:15 on X-1, giving a full day's rest before the new night start.
-          if (offerIsNight) {
-            const xm1Duty = rXm1[m.name]?.base_duty;
-            if (xm1Duty && ["E", "EW", "E*"].includes(xm1Duty)) return true;
+          // Day X: explicitly unavailable per roster
+          const dayX = rX[m.name];
+          if (dayX && !dayX.ot_available) {
+            const s = dayX.status, d = dayX.base_duty;
+            if (s === "AL_SHIFT" || s === "AL_REST") return "On annual leave";
+            if (s === "COVER_ACTIVE")                return "On cover duty";
+            if (s === "OT_RECORD")                   return "Already working an OT shift";
+            return `On ${d} shift`;
           }
 
-          return false;
-        });
+          // Day X+1: night shift that physically starts the evening of the offer date
+          const dayX1 = rX1[m.name];
+          if (dayX1 && nightDuties.has(dayX1.base_duty))
+            return `${dayX1.base_duty} shift starts tomorrow evening`;
+
+          // Day X+2: night shift in two days — daytime OT blocked, needs rest
+          const dayX2 = rX2[m.name];
+          if (dayX2 && nightDuties.has(dayX2.base_duty) && !offerIsNight)
+            return `${dayX2.base_duty} shift in 2 days — rest needed before going in`;
+
+          // Day X-1 (N/NW offers): evening shift overlaps night start by 15 min
+          if (offerIsNight) {
+            const xm1Duty = rXm1[m.name]?.base_duty;
+            if (xm1Duty && ["E", "EW", "E*"].includes(xm1Duty)) {
+              const endsAt = xm1Duty === "E" ? "22:15" : "20:15";
+              return `${xm1Duty} shift runs until ${endsAt} — overlaps with night start`;
+            }
+          }
+
+          return null;
+        }
+
+        const toDecline = team
+          .filter(m => m.active !== false)
+          .map(m => ({ m, reason: declineReason(m) }))
+          .filter(({ reason }) => reason !== null);
 
         if (toDecline.length > 0) {
-          const autoDeclines = toDecline.map(m => ({
-            offer_id:      newOffer.id,
-            member_id:     m.id,
-            answer:        "no",
-            responded_at:  new Date().toISOString(),
-            auto_declined: true,  // prevents the member from changing this response
+          const autoDeclines = toDecline.map(({ m, reason }) => ({
+            offer_id:       newOffer.id,
+            member_id:      m.id,
+            answer:         "no",
+            responded_at:   new Date().toISOString(),
+            auto_declined:  true,
+            decline_reason: reason,
           }));
           const { error: declineErr } = await supabase.from("ot_responses").insert(autoDeclines);
           if (declineErr) console.error("postOT (auto-decline):", declineErr);
@@ -627,6 +645,7 @@ export default function App() {
         {[
           ["board",   "Board"],
           ...(isAdmin ? [["post", "Post OT"]] : []),
+          ...(!isAdmin ? [["roster", "Roster"]] : []),
           ["history", "History"],
           ["setup",   "Setup"],
           ["about",   "About"],
@@ -652,7 +671,11 @@ export default function App() {
         )}
 
         {tab === "post" && isAdmin && (
-          <PostOT onPost={postOT} />
+          <PostOT onPost={postOT} team={team} />
+        )}
+
+        {tab === "roster" && !isAdmin && (
+          <Roster currentUser={currentUser} team={team} />
         )}
 
         {tab === "history" && (

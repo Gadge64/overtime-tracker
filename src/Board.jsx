@@ -211,18 +211,27 @@ function OfferCard({ offer, ranked, currentUser, currentUserIsActive, isAdmin, o
               </span>
               <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
                 {myResponse && !changing ? (
-                  // Show current response + option to change it before the window closes
-                  // auto_declined means the roster said this member is on shift — no Change allowed
-                  <>
-                    <span className={`badge ${myResponse.answer === "yes" ? "badge-green" : "badge-red"}`}>
-                      {myResponse.auto_declined ? "On shift (roster)" : myResponse.answer === "yes" ? "✓ Opted in" : "✗ Declined"}
-                    </span>
-                    {!myResponse.auto_declined && (
+                  // auto_declined = roster said unavailable; show reason, no Change button
+                  myResponse.auto_declined ? (
+                    <div style={{ textAlign: "right" }}>
+                      <span className="badge badge-grey">Auto-declined</span>
+                      {myResponse.decline_reason && (
+                        <div style={{ fontSize: 10, color: "#9aa8a6", marginTop: 3, maxWidth: 180, lineHeight: 1.4 }}>
+                          {myResponse.decline_reason}
+                        </div>
+                      )}
+                    </div>
+                  ) : (
+                    // Manual response — show badge + option to change
+                    <>
+                      <span className={`badge ${myResponse.answer === "yes" ? "badge-green" : "badge-red"}`}>
+                        {myResponse.answer === "yes" ? "✓ Opted in" : "✗ Declined"}
+                      </span>
                       <button className="btn" style={{ padding: "3px 10px", fontSize: 11 }} onClick={() => setChanging(true)}>
                         Change
                       </button>
-                    )}
-                  </>
+                    </>
+                  )
                 ) : (
                   <>
                     <button className="btn yes" style={{ padding: "5px 14px" }} onClick={() => { onRespond(currentUser.id, "yes"); setChanging(false); }}>Opt in</button>
@@ -251,9 +260,20 @@ function OfferCard({ offer, ranked, currentUser, currentUserIsActive, isAdmin, o
                 {m.id === currentUser.id && <span style={{ color: "#9aa8a6" }}> (you)</span>}
               </span>
               {resp ? (
-                <span className={`badge ${resp.answer === "yes" ? "badge-green" : resp.auto_declined ? "badge-grey" : "badge-red"}`}>
-                  {resp.auto_declined ? "On shift" : resp.answer === "yes" ? "✓ In" : "✗ Declined"}
-                </span>
+                resp.auto_declined ? (
+                  <div style={{ textAlign: "right" }}>
+                    <span className="badge badge-grey">Auto-declined</span>
+                    {resp.decline_reason && (
+                      <div style={{ fontSize: 10, color: "#9aa8a6", marginTop: 2, maxWidth: 160, lineHeight: 1.3 }}>
+                        {resp.decline_reason}
+                      </div>
+                    )}
+                  </div>
+                ) : (
+                  <span className={`badge ${resp.answer === "yes" ? "badge-green" : "badge-red"}`}>
+                    {resp.answer === "yes" ? "✓ In" : "✗ Declined"}
+                  </span>
+                )
               ) : (
                 <span className="badge badge-grey">Waiting</span>
               )}

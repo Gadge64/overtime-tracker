@@ -21,9 +21,11 @@
 //
 // Props:
 //   onPost — fn({ desc, shiftType, shiftStart, shiftEnd, shiftHours })
+//   team   — array of active team members (for availability preview)
 // ============================================================
 
 import { useState, useEffect } from "react";
+import { supabase } from "./supabase";
 
 // ─── Preset definitions ───────────────────────────────────────────────────
 // days: JS getDay() values — 0=Sun, 1=Mon, 2=Tue, 3=Wed, 4=Thu, 5=Fri, 6=Sat
@@ -82,14 +84,64 @@ function getWindowHours(shiftStart) {
 
 // ─── Component ────────────────────────────────────────────────────────────
 
-export default function PostOT({ onPost }) {
-  const [shiftDate,   setShiftDate]   = useState("");       // "YYYY-MM-DD"
-  const [selection,   setSelection]   = useState(null);     // preset type string, or "manual"
-  const [manualStart, setManualStart] = useState("08:00");  // "HH:MM" for manual entry
-  const [manualEnd,   setManualEnd]   = useState("16:30");  // "HH:MM" for manual entry
-  const [desc,        setDesc]        = useState("");
+// ─── Availability preview helpers ────────────────────────────────────────
+// Same eligibility rules as App.jsx postOT, but read-only — just for display.
+
+function addDaysISO(isoDate, n) {
+  const [y, mo, d] = isoDate.split("-").map(Number);
+  return new Date(Date.UTC(y, mo - 1, d + n)).toISOString().slice(0, 10);
+}
+
+const NIGHT = new Set(["N", "NW"]);
+
+// Returns a human-readable decline reason, or null if the member is eligible.
+// rosterByDate: { "YYYY-MM-DD": { [initials]: { base_duty, status, ot_available } } }
+function previewDeclineReason(member, shiftType, rosterByDate, rosterDate) {
+  if (!member.active) return null;
+  const isNightOffer = NIGHT.has(shiftType);
+  const dateXm1 = addDaysISO(rosterDate, -1);
+  const dateX1  = addDaysISO(rosterDate,  1);
+  const dateX2  = addDaysISO(rosterDate,  2);
+  const rX   = (rosterByDate[rosterDate]  || {})[member.name];
+  const rXm1 = (rosterByDate[dateXm1]     || {})[member.name];
+  const rX1  = (rosterByDate[dateX1]      || {})[member.name];
+  const rX2  = (rosterByDate[dateX2]      || {})[member.name];
+
+  // Day X: check if member is already committed
+  if (rX && !rX.ot_available) {
+    const s = rX.status, d = rX.base_duty;
+    if (s === "AL_SHIFT" || s === "AL_REST") return "On annual leave";
+    if (s === "COVER_ACTIVE")                return "On cover duty";
+    if (s === "OT_RECORD")                   return "Already on an OT shift";
+    return `On ${d} shift`;
+  }
+  // X+1: N or NW starts that evening
+  if (rX1 && NIGHT.has(rX1.base_duty))
+    return `${rX1.base_duty} shift starts tomorrow evening`;
+  // X+2: N or NW blocks daytime OT only
+  if (rX2 && NIGHT.has(rX2.base_duty) && !isNightOffer)
+    return `${rX2.base_duty} shift in 2 days — rest needed before nights`;
+  // X-1 look-back: E/EW/E* on the evening before a night offer overlaps by 15 min
+  if (isNightOffer && rXm1 && ["E","EW","E*"].includes(rXm1.base_duty)) {
+    const ends = rXm1.base_duty === "E" ? "22:15" : "20:15";
+    return `${rXm1.base_duty} shift runs until ${ends} — overlaps with night start`;
+  }
+  return null;
+}
+
+// ─── Component ────────────────────────────────────────────────────────────
+
+export default function PostOT({ onPost, team = [] }) {
+  const [shiftDate,    setShiftDate]    = useState("");       // "YYYY-MM-DD"
+  const [selection,    setSelection]    = useState(null);     // preset type string, or "manual"
+  const [manualStart,  setManualStart]  = useState("08:00");  // "HH:MM" for manual entry
+  const [manualEnd,    setManualEnd]    = useState("16:30");  // "HH:MM" for manual entry
+  const [desc,         setDesc]         = useState("");
   // Short window for shifts under 48h away — coordinator picks 30min/1h/2h
-  const [shortWindow, setShortWindow] = useState(null);
+  const [shortWindow,  setShortWindow]  = useState(null);
+  // Availability preview for the selected date and shift type
+  const [preview,      setPreview]      = useState(null);     // { available, declined } | null
+  const [previewOpen,  setPreviewOpen]  = useState(false);
 
   // Day of week for the chosen date (0=Sun … 6=Sat)
   const dayOfWeek = shiftDate ? new Date(shiftDate).getDay() : null;
@@ -140,6 +192,45 @@ export default function PostOT({ onPost }) {
 
   // tooSoon offers are allowed if the coordinator picks a short window
   const canSubmit = !!shiftDate && !!selection && !!desc.trim() && shiftHours > 0 && (!tooSoon || shortWindow !== null);
+
+  // Availability preview: fetch roster for the 4-day window around the selected shift
+  // and show who will be auto-declined and why before the offer is posted.
+  useEffect(() => {
+    setPreview(null);
+    const shiftType = selection === "manual" ? "manual" : selection;
+    if (!shiftDate || !shiftType || !team.length) return;
+
+    async function fetchPreview() {
+      const isNight = NIGHT.has(shiftType);
+      const dates = isNight
+        ? [addDaysISO(shiftDate,-1), shiftDate, addDaysISO(shiftDate,1), addDaysISO(shiftDate,2)]
+        : [shiftDate, addDaysISO(shiftDate,1), addDaysISO(shiftDate,2)];
+
+      const { data } = await supabase
+        .from("roster_availability")
+        .select("date, engineer, base_duty, status, ot_available")
+        .in("date", dates);
+
+      // Group by date then by engineer
+      const byDate = {};
+      for (const r of (data || [])) {
+        if (!byDate[r.date]) byDate[r.date] = {};
+        byDate[r.date][r.engineer] = r;
+      }
+
+      const available = [];
+      const declined  = [];
+      for (const m of team) {
+        if (m.active === false) continue;
+        const reason = previewDeclineReason(m, shiftType, byDate, shiftDate);
+        if (reason) declined.push({ name: m.name, reason });
+        else available.push(m.name);
+      }
+      setPreview({ available, declined });
+    }
+
+    fetchPreview();
+  }, [shiftDate, selection, team.length]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Effective window: calculated for planned offers, coordinator-chosen for short-notice
   const effectiveWindowHours = tooSoon ? shortWindow : windowHours;
@@ -302,6 +393,43 @@ export default function PostOT({ onPost }) {
           ) : (
             <div style={{ fontSize: 11, color: "#042d2d", fontWeight: 600 }}>
               Response window: {windowHours}h — closes {new Date(Date.now() + windowHours * 3_600_000).toLocaleString("en-GB", { weekday: "short", day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* ── Availability preview ──────────────────────────── */}
+      {preview && selection !== "manual" && (
+        <div style={{ marginBottom: 16 }}>
+          <div
+            style={{ display: "flex", alignItems: "center", justifyContent: "space-between", cursor: "pointer", userSelect: "none", marginBottom: previewOpen ? 8 : 0 }}
+            onClick={() => setPreviewOpen(o => !o)}
+          >
+            <div style={{ fontSize: 11, fontWeight: 700, textTransform: "uppercase", letterSpacing: 1, color: "#7a8c8a" }}>
+              Roster check
+            </div>
+            <div style={{ fontSize: 11, color: "#7a8c8a" }}>
+              {preview.available.length} available · {preview.declined.length} auto-declined {previewOpen ? "▲" : "▼"}
+            </div>
+          </div>
+          {previewOpen && (
+            <div style={{ border: "1px solid #e1e8e6", borderRadius: 6, overflow: "hidden" }}>
+              {preview.available.map(name => (
+                <div key={name} style={{ display: "flex", alignItems: "center", gap: 8, padding: "7px 12px", borderBottom: "1px solid #f0f3f2", background: "#fff" }}>
+                  <span style={{ fontSize: 14 }}>✓</span>
+                  <span style={{ fontSize: 12, fontWeight: 700, color: "#042d2d", width: 32 }}>{name}</span>
+                  <span style={{ fontSize: 11, color: "#1f8a5f" }}>Available</span>
+                </div>
+              ))}
+              {preview.declined.map(({ name, reason }) => (
+                <div key={name} style={{ display: "flex", alignItems: "flex-start", gap: 8, padding: "7px 12px", borderBottom: "1px solid #f0f3f2", background: "#fafafa" }}>
+                  <span style={{ fontSize: 14, marginTop: 1 }}>✗</span>
+                  <div>
+                    <span style={{ fontSize: 12, fontWeight: 700, color: "#042d2d", marginRight: 8 }}>{name}</span>
+                    <span style={{ fontSize: 11, color: "#9aa8a6" }}>{reason}</span>
+                  </div>
+                </div>
+              ))}
             </div>
           )}
         </div>

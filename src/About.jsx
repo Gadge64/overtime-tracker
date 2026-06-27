@@ -42,11 +42,12 @@ export default function About() {
       {/* ── The tabs ───────────────────────────────────────── */}
       <div className="section-title">The tabs</div>
       <div className="card">
-        <Row label="Board"    text="The main screen. Shows all live OT offers, each with a respond button, and the priority board showing everyone's accumulated hours." />
-        <Row label="Post OT"  text="Co-ordinators only. Post a new overtime opportunity by picking a date, selecting a shift preset, and submitting." />
-        <Row label="History"  text="A log of every past OT offer — who was awarded it, how long the shift was, and how many people opted in or declined." />
-        <Row label="Setup"    text="Manage the team roster: add members (with auto-generated PINs), rename, suspend, or remove. Co-ordinator accounts and passwords are managed here too." />
-        <Row label="About"    text="This page." last />
+        <Row label="Board"       text="The main screen. Shows all live OT offers, each with a respond button, and the priority board showing everyone's accumulated hours." />
+        <Row label="Post OT"     text="Co-ordinators only. Post a new overtime opportunity by picking a date, selecting a shift preset, and submitting. Includes a roster check showing who will be auto-declined before you post." />
+        <Row label="Roster"      text="Team members only. View your shift schedule week by week, compare your schedule with a colleague, and send Swap or UDR requests directly through the app." />
+        <Row label="History"     text="A log of every past OT offer — who was awarded it, how long the shift was, and how many people opted in or declined." />
+        <Row label="Setup"       text="Manage the team roster: add members (with auto-generated PINs), rename, suspend, or remove. Co-ordinator accounts and passwords are managed here too." />
+        <Row label="About"       text="This page." last />
       </div>
 
       {/* ── Shift presets ──────────────────────────────────── */}
@@ -82,6 +83,117 @@ export default function About() {
           The app handles this automatically when calculating hours and close times.
           Manual entry is also available if none of the presets fit.
         </p>
+      </div>
+
+      {/* ── Roster eligibility ─────────────────────────────── */}
+      <div className="section-title">Roster eligibility — how auto-decline works</div>
+      <div className="card">
+        <p style={p}>
+          When the co-ordinator posts an OT offer, the system automatically cross-references
+          the ANI SMC roster and declines anyone who cannot reasonably take the shift.
+          If you're auto-declined, you'll see a grey <strong>Auto-declined</strong> badge
+          on the Board with the reason shown underneath — no action is needed from you.
+        </p>
+        <p style={p}>
+          Four checks are applied, covering a window of up to four days around the offer date.
+          The offer date is called <strong style={teal}>X</strong>.
+        </p>
+
+        {/* Check 1 */}
+        <EligRow
+          title="Day X — the offer itself"
+          colour="#1f8a5f"
+          text="Your roster entry for the offer date is checked first. If you're already committed to a shift, on annual leave, on a cover duty, or already working an OT shift, you're auto-declined immediately."
+          examples={[
+            { outcome: "❌", text: "On annual leave → auto-declined (On annual leave)" },
+            { outcome: "❌", text: "On any shift (E, D1, N, NW, SBY, EW, Cover…) → auto-declined with that shift code as the reason" },
+            { outcome: "✅", text: "On a rest day (R) → eligible to respond" },
+          ]}
+        />
+
+        {/* Check 2 */}
+        <EligRow
+          title="Day X+1 — the day after"
+          colour="#2471a3"
+          text="If you have an N or NW shift scheduled for the following calendar day, you're auto-declined. Both N and NW are night shifts that start in the evening — the N starts at 22:00 and NW at 20:00 on the same evening as the OT offer's calendar date."
+          examples={[
+            { outcome: "❌", text: "N or NW on X+1 → auto-declined (N/NW shift starts tomorrow evening)" },
+            { outcome: "✅", text: "Any other shift on X+1 → still eligible" },
+          ]}
+        />
+
+        {/* Check 3 */}
+        <EligRow
+          title="Day X+2 — two days after"
+          colour="#7d3c98"
+          text="If you have an N or NW in two days, you need the day before to rest before going on nights. For daytime OT, you're blocked. For an N or NW OT offer, you're still fine — the offer date is your last rest day before nights start."
+          examples={[
+            { outcome: "❌", text: "N or NW on X+2 AND the OT offer is a daytime shift → auto-declined (rest needed before nights)" },
+            { outcome: "✅", text: "N or NW on X+2 AND the OT offer is itself N or NW → eligible" },
+          ]}
+        />
+
+        {/* Check 4 */}
+        <EligRow
+          title="Day X−1 look-back — night offers only"
+          colour="#1a2e6e"
+          last
+          text="For N and NW offers only, the evening before is also checked. N and NW shifts begin at 22:00 and 20:00 respectively on the evening before the calendar date (e.g. the NW rostered for Saturday actually starts at 20:00 Friday evening). If you finished an E (Evening, ends 22:15), EW (ends 20:15), or E* (ends 20:15) shift the previous evening, the shifts overlap by 15 minutes — by design in the roster. So you're auto-declined."
+          examples={[
+            { outcome: "❌", text: "E on X−1 → blocked for N or NW OT (E ends 22:15 — overlaps with N start at 22:00)" },
+            { outcome: "❌", text: "EW or E* on X−1 → blocked for N or NW OT (EW/E* ends 20:15 — overlaps with NW start at 20:00)" },
+            { outcome: "✅", text: "N or NW on X−1 → fine (that shift started the evening of X−2 and ended 08:15, leaving a full day's rest)" },
+          ]}
+        />
+
+        <div style={{ marginTop: 14, padding: "10px 14px", background: "#f5f7f6", borderRadius: 4, border: "1px solid #e1e8e6", fontSize: 12, color: "#475857", lineHeight: 1.7 }}>
+          <strong style={teal}>Roster preview (co-ordinators):</strong> On the Post OT tab, tap the
+          "Roster check" line after selecting a date and shift type to see who will be
+          available and who will be auto-declined — before you post the offer.
+        </div>
+      </div>
+
+      {/* ── Swap / UDR checker ──────────────────────────────── */}
+      <div className="section-title">Swap / UDR checker</div>
+      <div className="card">
+        <p style={p}>
+          The <strong style={teal}>Roster tab</strong> (team members only) lets you see your shift
+          schedule week by week and compare it with a colleague's. This is the starting point
+          for arranging a <strong>Swap</strong> or an <strong>UDR</strong>.
+        </p>
+
+        <div style={{ marginBottom: 14, paddingBottom: 14, borderBottom: "1px solid #e1e8e6" }}>
+          <div style={{ fontSize: 12, fontWeight: 700, color: "#042d2d", marginBottom: 4, textTransform: "uppercase", letterSpacing: 1 }}>Straight Swap</div>
+          <p style={{ ...p, marginBottom: 0 }}>
+            Two engineers agree to cover each other's shifts on different dates. There is no requirement
+            that the shifts are the same type — for example, an SBY can be swapped with an N.
+            The reciprocal leg can be arranged later; it doesn't have to be in the same week.
+            A Swap request requires you to pick the return date (the shift of theirs that you'll cover).
+          </p>
+        </div>
+
+        <div style={{ marginBottom: 14, paddingBottom: 14, borderBottom: "1px solid #e1e8e6" }}>
+          <div style={{ fontSize: 12, fontWeight: 700, color: "#042d2d", marginBottom: 4, textTransform: "uppercase", letterSpacing: 1 }}>UDR — Urgent Domestic Request</div>
+          <p style={{ ...p, marginBottom: 0 }}>
+            This is essentially a day of annual leave where cover is arranged directly between two
+            engineers rather than going through official leave management. One engineer covers the other's
+            shift — no reciprocal is required. A UDR request is one-way: the person taking the day off
+            sends the request; the covering engineer accepts or declines.
+          </p>
+        </div>
+
+        <div style={{ fontSize: 12, fontWeight: 700, color: "#042d2d", marginBottom: 6, textTransform: "uppercase", letterSpacing: 1 }}>How to use it</div>
+        <Step n="1" text="Go to the Roster tab and navigate to the relevant week with the ◀ ▶ arrows." />
+        <Step n="2" text="Open the 'Swap / UDR checker' section and pick a colleague from the dropdown." />
+        <Step n="3" text="Your schedules appear side by side. 'Request →' appears on any day where they're free and you have a shift they could cover. 'You free' appears where the opposite is true." />
+        <Step n="4" text="Tap 'Request →' on the shift you'd like covered. Choose Swap or UDR. For a Swap, pick which of their shifts you'll cover in return from the list shown." />
+        <Step n="5" text="Your colleague sees a pending request on their Roster tab. They tap Accept or Decline." last />
+
+        <div style={{ marginTop: 10, fontSize: 12, color: "#7a8c8a", lineHeight: 1.6 }}>
+          <strong style={teal}>Note:</strong> The swap checker uses the roster's rest-day (R) flag to determine
+          availability. Night shift overlap rules (the same checks as OT auto-decline) still apply in practice
+          — check those yourself before finalising a night shift swap.
+        </div>
       </div>
 
       {/* ── The OT offer flow ──────────────────────────────── */}
@@ -334,5 +446,25 @@ function WindowRow({ label, window, last }) {
       <td style={{ padding: "8px 0", fontSize: 13, color: "#475857" }}>{label}</td>
       <td style={{ padding: "8px 0", fontSize: 13, fontWeight: 600, color: "#042d2d", textAlign: "right" }}>{window}</td>
     </tr>
+  );
+}
+
+// Eligibility check card with coloured left border, title, description, and examples
+function EligRow({ title, colour, text, examples, last }) {
+  return (
+    <div style={{
+      borderLeft: `3px solid ${colour}`, paddingLeft: 12, marginBottom: last ? 0 : 16,
+    }}>
+      <div style={{ fontSize: 12, fontWeight: 700, color: colour, textTransform: "uppercase", letterSpacing: 1, marginBottom: 4 }}>
+        {title}
+      </div>
+      <p style={{ ...p, marginBottom: 8 }}>{text}</p>
+      {examples.map((e, i) => (
+        <div key={i} style={{ fontSize: 12, color: "#475857", marginBottom: 4, display: "flex", gap: 8 }}>
+          <span style={{ minWidth: 18 }}>{e.outcome}</span>
+          <span>{e.text}</span>
+        </div>
+      ))}
+    </div>
   );
 }
