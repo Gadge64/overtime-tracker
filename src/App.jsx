@@ -211,7 +211,7 @@ export default function App() {
     const thirtyMinsAgo = new Date(Date.now() - 30 * 60_000).toISOString();
 
     const [openRes, recentRes] = await Promise.all([
-      supabase.from("ot_offers").select("*").eq("status", "open").order("created_at", { ascending: true }),
+      supabase.from("ot_offers").select("*").eq("status", "open").order("shift_time", { ascending: true }),
       supabase.from("ot_offers").select("*").in("status", ["closed", "cancelled"]).gte("closed_at", thirtyMinsAgo).order("closed_at", { ascending: false }).limit(10),
     ]);
 

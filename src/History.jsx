@@ -57,7 +57,7 @@ export default function History({ history, team }) {
 
             {/* Dates */}
             <div style={{ marginTop: 8, fontSize: 11, color: "#9aa8a6" }}>
-              Posted: {formatDate(h.created_at)} · Closed: {formatDate(h.closed_at)}
+              Posted: {formatDate(h.posted_at)} · Closed: {formatDate(h.closed_at)}
             </div>
 
             {/* Winner — only shown for closed (not cancelled) offers */}
