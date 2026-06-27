@@ -70,19 +70,30 @@ export default function About({ isMember = false }) {
           <tbody>
             <PresetRow code="E"    start="13:30" end="22:15"         dur="8h 45m"  days="Mon – Thu" />
             <PresetRow code="D1"   start="08:00" end="16:30"         dur="8h 30m"  days="Mon – Fri" />
-            <PresetRow code="N"    start="22:00" end="08:15 †"       dur="10h 15m" days="Tue – Fri" />
+            <PresetRow code="N"    start="22:00 ‡" end="08:15 †"     dur="10h 15m" days="Tue – Fri" />
             <PresetRow code="EW"   start="08:00" end="20:15"         dur="12h 15m" days="Sat – Sun" />
-            <PresetRow code="NW"   start="20:00" end="08:15 †"       dur="12h 15m" days="Sat – Mon" />
+            <PresetRow code="NW"   start="20:00 ‡" end="08:15 †"     dur="12h 15m" days="Sat – Mon" />
             <PresetRow code="SBY"  start="08:00" end="13:30"         dur="5h 30m"  days="Mon – Fri" />
             <PresetRow code="E*"   start="13:30" end="20:15"         dur="6h 45m"  days="Fri only" />
             <PresetRow code="CONT" start="13:30" end="22:15"         dur="8h 45m"  days="Any day" last />
           </tbody>
         </table>
-        <p style={{ ...p, marginTop: 10, marginBottom: 0, color: "#7a8c8a", fontSize: 11 }}>
-          † Overnight — shift ends on the following calendar day.
+        <p style={{ ...p, marginTop: 10, marginBottom: 4, color: "#7a8c8a", fontSize: 11 }}>
+          † Overnight — shift ends at 08:15 on the following calendar day.
           The app handles this automatically when calculating hours and close times.
           Manual entry is also available if none of the presets fit.
         </p>
+        <p style={{ ...p, marginBottom: 12, color: "#7a8c8a", fontSize: 11 }}>
+          ‡ N and NW shifts <em>start</em> the evening before the calendar date — see note below.
+        </p>
+        <div style={{ padding: "10px 14px", background: "#eef3f8", borderRadius: 4, border: "1px solid #2471a333", fontSize: 12, color: "#1a2e2e", lineHeight: 1.7 }}>
+          <strong>Important — N and NW calendar convention:</strong> These shifts are entered on the
+          roster for the day they <em>end</em>, not the day they start. An <strong>N</strong> listed
+          on Wednesday physically begins at <strong>22:00 Tuesday evening</strong> and ends 08:15
+          Wednesday. An <strong>NW</strong> listed on Saturday begins at <strong>20:00 Friday
+          evening</strong> and ends 08:15 Saturday. The system accounts for this in all eligibility
+          checks — if you're rostered for an N or NW, the previous evening is protected automatically.
+        </div>
       </div>
 
       {/* ── Roster eligibility ─────────────────────────────── */}
