@@ -29,44 +29,45 @@ export default function About() {
       <div className="section-title">The tabs</div>
       <div className="card">
         <Row label="Board"    text="The main screen. Shows the priority list and any active OT offer. This is where you tap Yes or No when overtime is available." />
-        <Row label="Post OT"  text="Co-ordinators use this to post a new planned overtime opportunity. Fill in the shift details and submit — the team can then respond." />
+        <Row label="Post OT"  text="Co-ordinators use this to post overtime. Pick a date, choose a shift preset (E, D1, N, EW, NW, SBY, E*, CONT) or enter times manually, then submit." />
         <Row label="History"  text="A log of all past overtime offers, who was awarded each one, and how many people said yes or no." />
-        <Row label="Setup"    text="Manage the team roster — add, rename, or remove members. Co-ordinator accounts are also managed here." />
+        <Row label="Setup"    text="Manage the team roster — add (with auto PIN), rename, suspend, or remove members. Co-ordinator accounts are also managed here." />
       </div>
 
       {/* ── Scoring ───────────────────────────────────────── */}
       <div className="section-title">How scoring works</div>
       <div className="card">
         <p style={p}>
-          Everyone starts on <strong style={teal}>0 points</strong>. The lower your
-          score, the higher your priority for the next shift.
+          Everyone starts on <strong style={teal}>0 hours</strong>. The lower your
+          accumulated hours, the higher your priority. When you work a shift, the
+          exact duration is added to your total — so longer shifts count for more.
         </p>
         <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
           <thead>
             <tr style={{ borderBottom: "1px solid #e1e8e6" }}>
-              <th style={th}>What you do</th>
-              <th style={{ ...th, textAlign: "right" }}>Score change</th>
+              <th style={th}>Action</th>
+              <th style={{ ...th, textAlign: "right" }}>Hours added</th>
             </tr>
           </thead>
           <tbody>
-            <ScoreRow action="Take a shift (awarded the OT)"    change="+1" colour="#c0392b" />
-            <ScoreRow action="Say No"                           change="0"  colour="#7a8c8a" />
-            <ScoreRow action="Don't respond"                    change="0"  colour="#7a8c8a" />
-            <ScoreRow action="Say Yes but someone else gets it" change="0"  colour="#7a8c8a" last />
+            <ScoreRow action="Awarded the shift (e.g. an E shift, 8h 45m)"  change="+ shift duration" colour="#c0392b" />
+            <ScoreRow action="Decline"                                        change="0"                colour="#7a8c8a" />
+            <ScoreRow action="Don't respond"                                  change="0"                colour="#7a8c8a" />
+            <ScoreRow action="Opt in but someone else gets it"                change="0"                colour="#7a8c8a" last />
           </tbody>
         </table>
         <p style={{ ...p, marginBottom: 0, marginTop: 12, color: "#7a8c8a", fontSize: 11 }}>
-          There are no penalties for saying No or not responding. Only taking a shift adds to your score.
+          There are no penalties for declining or not responding. Only working a shift adds to your total.
         </p>
       </div>
 
       {/* ── Tiebreaker ────────────────────────────────────── */}
-      <div className="section-title">What happens when scores are equal?</div>
+      <div className="section-title">What happens when hours are equal?</div>
       <div className="card">
-        <p style={p}>If two people have the same score, the tiebreaker is applied in this order:</p>
+        <p style={p}>If two people have the same accumulated hours, the tiebreaker is applied in this order:</p>
         <ol style={{ margin: 0, paddingLeft: 20, color: "#475857", fontSize: 13, lineHeight: 1.9 }}>
-          <li><strong style={teal}>Lowest score first</strong> — whoever has taken fewer shifts overall</li>
-          <li><strong style={teal}>Least recent OT</strong> — if scores are equal, whoever did overtime longest ago goes next</li>
+          <li><strong style={teal}>Lowest hours first</strong> — whoever has accumulated fewer hours overall</li>
+          <li><strong style={teal}>Least recent OT</strong> — if hours are equal, whoever did overtime longest ago goes next</li>
         </ol>
         <p style={{ ...p, marginBottom: 0, marginTop: 12, color: "#7a8c8a", fontSize: 11 }}>
           The result is always predictable — you can see exactly where you sit on the Board tab.
@@ -74,14 +75,13 @@ export default function About() {
       </div>
 
       {/* ── Response windows ──────────────────────────────── */}
-      <div className="section-title">Response windows</div>
+      <div className="section-title">Response windows & auto-award</div>
       <div className="card">
         <p style={p}>
-          When a shift is posted, a response window opens. You have until the window
-          closes to tap Yes or No — no need to rush. The window length depends on
-          how soon the shift starts:
+          When a shift is posted, a response window opens. Tap <strong style={teal}>Opt in</strong> or <strong style={{ color: "#c0392b" }}>Decline</strong> — no need to rush.
+          The window length depends on how soon the shift starts:
         </p>
-        <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
+        <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13, marginBottom: 12 }}>
           <thead>
             <tr style={{ borderBottom: "1px solid #e1e8e6" }}>
               <th style={th}>Time until shift</th>
@@ -91,12 +91,40 @@ export default function About() {
           <tbody>
             <WindowRow label="72+ hours away"   window="24 hours" />
             <WindowRow label="48–72 hours away" window="12 hours" />
-            <WindowRow label="Under 48 hours"   window="WhatsApp only" last />
+            <WindowRow label="Under 48 hours"   window="No auto-window" last />
           </tbody>
         </table>
-        <p style={{ ...p, marginTop: 12, marginBottom: 0 }}>
-          When the window closes, the co-ordinator taps <strong style={teal}>Award</strong> and
-          the shift goes to whoever said Yes with the lowest score.
+        <p style={{ ...p, marginBottom: 0 }}>
+          The system <strong style={teal}>automatically awards</strong> the shift as soon as either:
+        </p>
+        <ul style={{ margin: "6px 0 0", paddingLeft: 20, color: "#475857", fontSize: 13, lineHeight: 1.8 }}>
+          <li>Everyone on the roster has responded (opted in or declined), or</li>
+          <li>The response window expires.</li>
+        </ul>
+        <p style={{ ...p, marginTop: 10, marginBottom: 0, color: "#7a8c8a", fontSize: 11 }}>
+          The co-ordinator can also manually award at any time using the Award button on the Board.
+        </p>
+      </div>
+
+      {/* ── PIN login ─────────────────────────────────────── */}
+      <div className="section-title">Your PIN</div>
+      <div className="card">
+        <p style={{ ...p, marginBottom: 0 }}>
+          When you tap your name on the login screen, you'll be asked for a 4-digit PIN.
+          Your PIN was given to you by the co-ordinator when your account was created. It
+          prevents someone else accidentally logging in as you. If you've forgotten your PIN,
+          contact your co-ordinator — they can view it in Supabase or reset your account.
+        </p>
+      </div>
+
+      {/* ── Suspended from roster ─────────────────────────── */}
+      <div className="section-title">Suspended from OT</div>
+      <div className="card">
+        <p style={{ ...p, marginBottom: 0 }}>
+          If you are on extended leave or temporarily unavailable, the co-ordinator can
+          suspend you from the overtime roster. While suspended you won't appear on the
+          priority board and can't respond to offers. Your score and history are preserved
+          and you'll be reinstated when you return.
         </p>
       </div>
 

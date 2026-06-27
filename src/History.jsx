@@ -39,17 +39,18 @@ export default function History({ history }) {
         return (
           <div key={h.id} className="card">
 
-            {/* Description + type badge */}
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
-              <div style={{ fontSize: 13, flex: 1, marginRight: 12, color: "#1a2e2e" }}>
+            {/* Description + shift type badge */}
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 8 }}>
+              <div style={{ fontSize: 13, flex: 1, color: "#1a2e2e" }}>
                 {h.description}
               </div>
-              {h.status === "cancelled"
-                ? <span className="badge badge-red">Cancelled</span>
-                : h.immediate
-                ? <span className="badge badge-grey">Immediate</span>
-                : <span className="badge badge-gold">Planned</span>
-              }
+              <div style={{ display: "flex", gap: 4, flexShrink: 0, flexWrap: "wrap", justifyContent: "flex-end" }}>
+                {h.shift_type && <span className="badge badge-gold">{h.shift_type}</span>}
+                {h.status === "cancelled"
+                  ? <span className="badge badge-red">Cancelled</span>
+                  : <span className="badge badge-grey">Closed</span>
+                }
+              </div>
             </div>
 
             {/* Dates */}
@@ -61,6 +62,12 @@ export default function History({ history }) {
             {h.winner?.name && (
               <div style={{ marginTop: 8, fontSize: 12, color: "#1f8a5f", fontWeight: 600 }}>
                 ✓ Awarded to {h.winner.name}
+                {/* Show shift duration (hours added to their total) */}
+                {h.shift_hours != null && (
+                  <span style={{ fontWeight: 400, color: "#7a8c8a", marginLeft: 6 }}>
+                    · +{Number(h.shift_hours).toFixed(2)}h
+                  </span>
+                )}
               </div>
             )}
 

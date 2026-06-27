@@ -2,19 +2,21 @@
 // App.jsx — Root component
 //
 // Three jobs:
-//   1. Auth gate — team members pick their name from the roster.
-//      Supervisors (admins) have a separate login section.
-//      Identity is stored in localStorage so they don't re-pick
-//      every visit. currentUser always has a `role` field:
-//        'member' — a team member eligible for OT
-//        'admin'  — a supervisor, not eligible for OT
+//   1. Auth gate — team members tap their name and enter a 4-digit PIN.
+//      Co-ordinators have a separate password-protected login.
 //
-//   2. Data layer — fetches team_members, admins, active offer,
-//      and history from Supabase on mount. Realtime subscriptions
-//      keep every device in sync automatically.
+//   2. Data layer — fetches team_members, admins, active offers, and history
+//      from Supabase. Realtime subscriptions keep every device in sync.
+//      Multiple OT offers can be live simultaneously.
 //
-//   3. Actions — all database writes live here and are passed as
-//      props to the tab components.
+//   3. Actions — all DB writes live here and are passed as props to tabs.
+//
+// Auto-close logic:
+//   - Every 30s the client calls auto_close_expired_offers() — a DB function
+//     that closes any offer whose response window has passed, awarding to the
+//     top-priority yes-responder (or cancelling if none).
+//   - After each member responds, check_and_close_if_complete() checks if
+//     everyone has answered and closes/awards immediately if so.
 // ============================================================
 
 import { useState, useEffect, useCallback } from "react";
@@ -26,12 +28,9 @@ import Setup   from "./Setup";
 import About   from "./About";
 import "./styles.css";
 
-// localStorage key for persisting the current user's identity between visits
 const CURRENT_USER_KEY = "ot-current-user";
 
 // ─── Notification helpers ─────────────────────────────────────────────────
-// Browser notifications fire when a new OT offer is posted while the tab is open.
-// (True push notifications when the app is closed require extra infrastructure.)
 
 async function requestNotificationPermission() {
   if ("Notification" in window && Notification.permission === "default") {
@@ -45,21 +44,9 @@ function showNotification(title, body) {
   }
 }
 
-// ─── Window hours helper ──────────────────────────────────────────────────
-// How long the response window should be based on how soon the shift starts.
-// Shifts under 48h are not posted here — handled on WhatsApp instead.
-
-function getWindowHours(shiftTime) {
-  const hoursUntil = (new Date(shiftTime) - Date.now()) / 3_600_000;
-  if (hoursUntil >= 72) return 24;  // 3+ days away → 24 hour window
-  if (hoursUntil >= 48) return 12;  // 2–3 days away → 12 hour window
-  return null;                       // under 48h — blocked in the form
-}
-
 // ─── Password hashing ────────────────────────────────────────────────────
-// Uses the browser's built-in Web Crypto API to SHA-256 hash the password.
-// We never store or transmit the plain-text password — only the hash is
-// saved in the database, and comparison happens client-side.
+// SHA-256 via Web Crypto API. Only the hash is stored; never plain text.
+// Member PINs are stored as plain text (convenience feature, not security gate).
 
 async function hashPassword(password) {
   const encoded = new TextEncoder().encode(password);
@@ -70,29 +57,26 @@ async function hashPassword(password) {
 }
 
 // ─── Auth screen ─────────────────────────────────────────────────────────
-// Two sections:
-//   Top: team member grid — tap name to log in as a team member
-//   Bottom: Admin button — tapping opens a password prompt
-//
-// Admins are separate from team members — no score, not eligible for OT.
+// Team member grid → PIN prompt → logged in
+// Co-ordinator button → password prompt → logged in as admin
 
 function AuthScreen({ team, admins, onSelectMember, onSelectAdmin }) {
-  const [pendingAdmin,   setPendingAdmin]   = useState(null);  // admin tapped, awaiting password
-  const [passwordInput,  setPasswordInput]  = useState("");
-  const [passwordError,  setPasswordError]  = useState(false);
-  const [checking,       setChecking]       = useState(false);
+  const [pendingAdmin,  setPendingAdmin]  = useState(null);
+  const [passwordInput, setPasswordInput] = useState("");
+  const [passwordError, setPasswordError] = useState(false);
+  const [checking,      setChecking]      = useState(false);
 
-  // Called when the admin submits their password
+  const [pendingMember, setPendingMember] = useState(null);
+  const [pinInput,      setPinInput]      = useState("");
+  const [pinError,      setPinError]      = useState(false);
+
   async function handleAdminLogin(e) {
     e.preventDefault();
     if (!pendingAdmin || !passwordInput) return;
     setChecking(true);
     setPasswordError(false);
-
     const hash = await hashPassword(passwordInput);
-
     if (hash === pendingAdmin.password_hash) {
-      // Password correct — pass the admin record up to App
       onSelectAdmin(pendingAdmin);
     } else {
       setPasswordError(true);
@@ -101,10 +85,15 @@ function AuthScreen({ team, admins, onSelectMember, onSelectAdmin }) {
     setChecking(false);
   }
 
-  function closeModal() {
-    setPendingAdmin(null);
-    setPasswordInput("");
-    setPasswordError(false);
+  function handleMemberPinSubmit(e) {
+    e.preventDefault();
+    if (!pendingMember || pinInput.length !== 4) return;
+    if (pinInput === pendingMember.pin) {
+      onSelectMember(pendingMember);
+    } else {
+      setPinError(true);
+      setPinInput("");
+    }
   }
 
   return (
@@ -112,33 +101,27 @@ function AuthScreen({ team, admins, onSelectMember, onSelectAdmin }) {
       <div className="auth-title">OVERTIME TRACKER</div>
       <div className="auth-subtitle">Who are you? Tap your name to continue.</div>
 
-      {/* Team member grid — sorted alphabetically for easy scanning */}
       <div className="auth-grid">
         {[...team].sort((a, b) => a.name.localeCompare(b.name)).map(m => (
-          <button key={m.id} className="auth-name-btn" onClick={() => onSelectMember(m)}>
+          <button
+            key={m.id}
+            className="auth-name-btn"
+            onClick={() => { setPendingMember(m); setPinInput(""); setPinError(false); }}
+          >
             {m.name}
           </button>
         ))}
       </div>
 
-      {/* Co-ordinator section — shown below the team grid if any admins exist */}
       {admins.length > 0 && (
         <div style={{ width: "100%", maxWidth: 320, marginTop: 24 }}>
-          <div style={{
-            textAlign: "center", marginBottom: 12,
-            fontSize: 10, letterSpacing: 2, textTransform: "uppercase",
-            color: "#7a8c8a", fontWeight: 700,
-          }}>
+          <div style={{ textAlign: "center", marginBottom: 12, fontSize: 10, letterSpacing: 2, textTransform: "uppercase", color: "#7a8c8a", fontWeight: 700 }}>
             Co-ordinator
           </div>
           <div style={{ display: "flex", gap: 10, justifyContent: "center" }}>
             {admins.map(a => (
-              <button
-                key={a.id}
-                className="auth-name-btn"
-                style={{ flex: 1 }}
-                onClick={() => { setPendingAdmin(a); setPasswordInput(""); setPasswordError(false); }}
-              >
+              <button key={a.id} className="auth-name-btn" style={{ flex: 1 }}
+                onClick={() => { setPendingAdmin(a); setPasswordInput(""); setPasswordError(false); }}>
                 {a.name}
               </button>
             ))}
@@ -146,39 +129,45 @@ function AuthScreen({ team, admins, onSelectMember, onSelectAdmin }) {
         </div>
       )}
 
-      {/* Password modal — shown after admin taps their name */}
+      {/* Admin password modal */}
       {pendingAdmin && (
-        <div className="password-overlay" onClick={closeModal}>
-          {/* stopPropagation prevents clicking inside the box from closing it */}
+        <div className="password-overlay" onClick={() => { setPendingAdmin(null); setPasswordInput(""); setPasswordError(false); }}>
           <div className="password-box" onClick={e => e.stopPropagation()}>
-            <div style={{ fontFamily: "'Archivo', sans-serif", fontSize: 18, fontWeight: 700, color: "#042d2d", marginBottom: 4 }}>
-              Co-ordinator Login
-            </div>
-            <div style={{ fontSize: 12, color: "#7a8c8a", marginBottom: 20 }}>
-              Enter the admin password to continue.
-            </div>
-
+            <div style={{ fontFamily: "'Archivo', sans-serif", fontSize: 18, fontWeight: 700, color: "#042d2d", marginBottom: 4 }}>Co-ordinator Login</div>
+            <div style={{ fontSize: 12, color: "#7a8c8a", marginBottom: 20 }}>Enter the admin password to continue.</div>
             <form onSubmit={handleAdminLogin}>
-              <input
-                className="input"
-                type="password"
-                placeholder="Password"
-                value={passwordInput}
+              <input className="input" type="password" placeholder="Password" value={passwordInput}
                 onChange={e => { setPasswordInput(e.target.value); setPasswordError(false); }}
-                autoFocus
-                style={{ marginBottom: 8 }}
-              />
-              {/* Show error message if wrong password was entered */}
-              {passwordError && (
-                <div style={{ fontSize: 11, color: "#c0392b", marginBottom: 8, fontWeight: 600 }}>
-                  Incorrect password. Try again.
-                </div>
-              )}
+                autoFocus style={{ marginBottom: 8 }} />
+              {passwordError && <div style={{ fontSize: 11, color: "#c0392b", marginBottom: 8, fontWeight: 600 }}>Incorrect password. Try again.</div>}
               <div style={{ display: "flex", gap: 8, marginTop: 4 }}>
                 <button className="btn primary" type="submit" disabled={!passwordInput || checking} style={{ flex: 1 }}>
                   {checking ? "Checking…" : "Login"}
                 </button>
-                <button className="btn" type="button" onClick={closeModal}>Cancel</button>
+                <button className="btn" type="button" onClick={() => { setPendingAdmin(null); setPasswordInput(""); setPasswordError(false); }}>Cancel</button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Member PIN modal */}
+      {pendingMember && (
+        <div className="password-overlay" onClick={() => { setPendingMember(null); setPinInput(""); setPinError(false); }}>
+          <div className="password-box" onClick={e => e.stopPropagation()}>
+            <div style={{ fontFamily: "'Archivo', sans-serif", fontSize: 18, fontWeight: 700, color: "#042d2d", marginBottom: 4 }}>
+              Welcome, {pendingMember.name}
+            </div>
+            <div style={{ fontSize: 12, color: "#7a8c8a", marginBottom: 20 }}>Enter your 4-digit PIN to continue.</div>
+            <form onSubmit={handleMemberPinSubmit}>
+              <input className="input" type="password" inputMode="numeric" maxLength={4}
+                placeholder="• • • •" value={pinInput}
+                onChange={e => { setPinInput(e.target.value.replace(/\D/g, "")); setPinError(false); }}
+                autoFocus style={{ marginBottom: 8, letterSpacing: 10, textAlign: "center", fontSize: 20 }} />
+              {pinError && <div style={{ fontSize: 11, color: "#c0392b", marginBottom: 8, fontWeight: 600 }}>Incorrect PIN. Try again.</div>}
+              <div style={{ display: "flex", gap: 8, marginTop: 4 }}>
+                <button className="btn primary" type="submit" disabled={pinInput.length !== 4} style={{ flex: 1 }}>Continue</button>
+                <button className="btn" type="button" onClick={() => { setPendingMember(null); setPinInput(""); setPinError(false); }}>Cancel</button>
               </div>
             </form>
           </div>
@@ -193,14 +182,14 @@ function AuthScreen({ team, admins, onSelectMember, onSelectAdmin }) {
 export default function App() {
   const [tab, setTab] = useState("board");
 
-  // Data from Supabase
-  const [team,        setTeam]        = useState([]);
-  const [admins,      setAdmins]      = useState([]); // supervisor accounts (separate from team)
-  const [activeOffer, setActiveOffer] = useState(null);
-  const [history,     setHistory]     = useState([]);
-  const [loading,     setLoading]     = useState(true);
+  const [team,         setTeam]         = useState([]);
+  const [admins,       setAdmins]       = useState([]);
+  // activeOffers holds all open offers PLUS any closed/cancelled in the last 30 min
+  // so the Board can show "just awarded" results without switching to History.
+  const [activeOffers, setActiveOffers] = useState([]);
+  const [history,      setHistory]      = useState([]);
+  const [loading,      setLoading]      = useState(true);
 
-  // Current user — has { id, name, role } where role is 'member' or 'admin'
   const [currentUser, setCurrentUser] = useState(() => {
     try { return JSON.parse(localStorage.getItem(CURRENT_USER_KEY)); }
     catch { return null; }
@@ -227,14 +216,30 @@ export default function App() {
     setAdmins(data);
   }, []);
 
-  const fetchActiveOffer = useCallback(async () => {
-    const { data, error } = await supabase
-      .from("ot_offers")
-      .select("*, ot_responses(*)")
-      .eq("status", "open")
-      .maybeSingle();
-    if (error) { console.error("fetchActiveOffer:", error); return; }
-    setActiveOffer(data);
+  // Fetches all open offers AND recently closed/cancelled (last 30 min).
+  // The "recent" ones are shown in Board as result banners.
+  const fetchActiveOffers = useCallback(async () => {
+    const thirtyMinsAgo = new Date(Date.now() - 30 * 60_000).toISOString();
+
+    const [openRes, recentRes] = await Promise.all([
+      supabase
+        .from("ot_offers")
+        .select("*, ot_responses(*), winner:team_members!winner_id(name)")
+        .eq("status", "open")
+        .order("created_at", { ascending: true }),
+      supabase
+        .from("ot_offers")
+        .select("*, ot_responses(*), winner:team_members!winner_id(name)")
+        .in("status", ["closed", "cancelled"])
+        .gte("closed_at", thirtyMinsAgo)
+        .order("closed_at", { ascending: false })
+        .limit(10),
+    ]);
+
+    if (openRes.error)   console.error("fetchActiveOffers (open):",   openRes.error);
+    if (recentRes.error) console.error("fetchActiveOffers (recent):", recentRes.error);
+
+    setActiveOffers([...(openRes.data || []), ...(recentRes.data || [])]);
   }, []);
 
   const fetchHistory = useCallback(async () => {
@@ -248,139 +253,137 @@ export default function App() {
     setHistory(data);
   }, []);
 
-  // ── Mount: initial load + realtime subscriptions ────────────────────────
+  // ── Mount: load data + realtime subscriptions + auto-close timer ────────
+
+  const autoCloseExpired = useCallback(async () => {
+    // Calls the DB function that closes any offer whose window has expired
+    const { error } = await supabase.rpc("auto_close_expired_offers");
+    if (error) console.error("auto_close_expired_offers:", error);
+  }, []);
 
   useEffect(() => {
-    Promise.all([fetchTeam(), fetchAdmins(), fetchActiveOffer(), fetchHistory()])
+    Promise.all([fetchTeam(), fetchAdmins(), fetchActiveOffers(), fetchHistory()])
+      .then(() => autoCloseExpired())  // check on mount in case window lapsed while app was closed
       .finally(() => setLoading(false));
 
     requestNotificationPermission();
 
+    // Realtime: refresh data whenever DB tables change
     const channel = supabase
       .channel("overtime-changes")
-      .on("postgres_changes", { event: "*", schema: "public", table: "team_members" },
-        () => fetchTeam()
-      )
-      .on("postgres_changes", { event: "*", schema: "public", table: "admins" },
-        () => fetchAdmins()
-      )
-      .on("postgres_changes", { event: "*", schema: "public", table: "ot_offers" },
-        (payload) => {
-          fetchActiveOffer();
-          fetchHistory();
-          if (payload.eventType === "INSERT" && payload.new?.status === "open") {
-            showNotification("⚡ New Overtime Available", payload.new.description);
-          }
+      .on("postgres_changes", { event: "*", schema: "public", table: "team_members" }, () => fetchTeam())
+      .on("postgres_changes", { event: "*", schema: "public", table: "admins" }, () => fetchAdmins())
+      .on("postgres_changes", { event: "*", schema: "public", table: "ot_offers" }, (payload) => {
+        fetchActiveOffers();
+        fetchHistory();
+        if (payload.eventType === "INSERT" && payload.new?.status === "open") {
+          showNotification("⚡ New Overtime Available", payload.new.description);
         }
-      )
-      .on("postgres_changes", { event: "*", schema: "public", table: "ot_responses" },
-        () => fetchActiveOffer()
-      )
+      })
+      .on("postgres_changes", { event: "*", schema: "public", table: "ot_responses" }, () => fetchActiveOffers())
       .subscribe();
 
-    return () => supabase.removeChannel(channel);
-  }, [fetchTeam, fetchAdmins, fetchActiveOffer, fetchHistory]);
+    // Poll every 30s to auto-close any expired offers (handles the case where
+    // no one is actively using the app when the window closes)
+    const timer = setInterval(autoCloseExpired, 30_000);
+
+    return () => {
+      supabase.removeChannel(channel);
+      clearInterval(timer);
+    };
+  }, [fetchTeam, fetchAdmins, fetchActiveOffers, fetchHistory, autoCloseExpired]);
 
   // ── Keep currentUser in sync with DB changes ────────────────────────────
-  // If someone's name changes or account is deleted on another device,
-  // update or clear the locally stored identity.
 
   useEffect(() => {
     if (!currentUser) return;
-
     if (currentUser.role === "admin") {
-      // Check against the admins table
       if (admins.length === 0) return;
-      const stillExists = admins.find(a => a.id === currentUser.id);
-      if (!stillExists) {
-        setCurrentUser(null);
-        localStorage.removeItem(CURRENT_USER_KEY);
-      } else if (stillExists.name !== currentUser.name) {
-        const updated = { ...currentUser, name: stillExists.name };
-        setCurrentUser(updated);
-        localStorage.setItem(CURRENT_USER_KEY, JSON.stringify(updated));
+      const found = admins.find(a => a.id === currentUser.id);
+      if (!found) { setCurrentUser(null); localStorage.removeItem(CURRENT_USER_KEY); }
+      else if (found.name !== currentUser.name) {
+        const u = { ...currentUser, name: found.name };
+        setCurrentUser(u); localStorage.setItem(CURRENT_USER_KEY, JSON.stringify(u));
       }
     } else {
-      // Check against the team_members table
       if (team.length === 0) return;
-      const stillExists = team.find(m => m.id === currentUser.id);
-      if (!stillExists) {
-        setCurrentUser(null);
-        localStorage.removeItem(CURRENT_USER_KEY);
-      } else if (stillExists.name !== currentUser.name) {
-        const updated = { ...currentUser, name: stillExists.name };
-        setCurrentUser(updated);
-        localStorage.setItem(CURRENT_USER_KEY, JSON.stringify(updated));
+      const found = team.find(m => m.id === currentUser.id);
+      if (!found) { setCurrentUser(null); localStorage.removeItem(CURRENT_USER_KEY); }
+      else if (found.name !== currentUser.name) {
+        const u = { ...currentUser, name: found.name };
+        setCurrentUser(u); localStorage.setItem(CURRENT_USER_KEY, JSON.stringify(u));
       }
     }
   }, [team, admins, currentUser]);
 
   // ── Actions: OT offers ──────────────────────────────────────────────────
 
-  async function postOT({ desc, shiftTime, immediate }) {
-    const payload = immediate
-      ? { description: desc, immediate: true, status: "open" }
-      : (() => {
-          const wh = getWindowHours(shiftTime);
-          return {
-            description:  desc,
-            immediate:    false,
-            shift_time:   new Date(shiftTime).toISOString(),
-            window_hours: wh,
-            closes_at:    new Date(Date.now() + wh * 3_600_000).toISOString(),
-            status:       "open",
-          };
-        })();
+  // Posts a new offer. Multiple offers can now be live simultaneously.
+  // shiftHours is stored so the close_ot_offer RPC can award the right score.
+  async function postOT({ desc, shiftType, shiftStart, shiftEnd, shiftHours }) {
+    const start   = new Date(shiftStart);
+    const hoursUntil = (start - Date.now()) / 3_600_000;
+    const wh = hoursUntil >= 72 ? 24 : hoursUntil >= 48 ? 12 : null;
+    const payload = {
+      description:  desc,
+      shift_type:   shiftType,
+      shift_time:   start.toISOString(),
+      shift_end:    shiftEnd ? new Date(shiftEnd).toISOString() : null,
+      shift_hours:  shiftHours,
+      window_hours: wh,
+      closes_at:    wh ? new Date(Date.now() + wh * 3_600_000).toISOString() : null,
+      status:       "open",
+      immediate:    false,
+    };
     const { error } = await supabase.from("ot_offers").insert(payload);
     if (error) { console.error("postOT:", error); return; }
     setTab("board");
   }
 
-  // UPSERT so team members can update their response before the window closes
-  async function respond(memberId, answer) {
-    if (!activeOffer) return;
+  // Upsert a response. After saving, call check_and_close_if_complete so the
+  // offer is awarded the moment the last team member responds.
+  async function respond(offerId, memberId, answer) {
     const { error } = await supabase
       .from("ot_responses")
       .upsert(
-        { offer_id: activeOffer.id, member_id: memberId, answer, responded_at: new Date().toISOString() },
+        { offer_id: offerId, member_id: memberId, answer, responded_at: new Date().toISOString() },
         { onConflict: "offer_id,member_id" }
       );
-    if (error) console.error("respond:", error);
+    if (error) { console.error("respond:", error); return; }
+
+    // Check whether all active members have now responded
+    const { error: checkErr } = await supabase.rpc("check_and_close_if_complete", { p_offer_id: offerId });
+    if (checkErr) console.error("check_and_close_if_complete:", checkErr);
   }
 
-  // Award the shift — atomic RPC increments winner's score and closes the offer
-  async function closeOT(winnerId) {
-    if (!activeOffer) return;
-    const { error } = await supabase.rpc("close_ot_offer", {
-      p_offer_id:  activeOffer.id,
-      p_winner_id: winnerId,
-    });
+  // Manual award by co-ordinator (before everyone has responded)
+  async function closeOT(offerId, winnerId) {
+    const { error } = await supabase.rpc("close_ot_offer", { p_offer_id: offerId, p_winner_id: winnerId });
     if (error) console.error("closeOT:", error);
   }
 
-  async function cancelOT() {
-    if (!activeOffer) return;
+  async function cancelOT(offerId) {
     const { error } = await supabase
       .from("ot_offers")
       .update({ status: "cancelled", closed_at: new Date().toISOString() })
-      .eq("id", activeOffer.id);
+      .eq("id", offerId);
     if (error) console.error("cancelOT:", error);
   }
 
   // ── Actions: team members ───────────────────────────────────────────────
 
-  async function addMember(name) {
-    const { error } = await supabase.from("team_members").insert({ name });
-    if (error) console.error("addMember:", error);
+  async function addMember(name, pin) {
+    const { error } = await supabase.from("team_members").insert({ name, pin });
+    if (error) { console.error("addMember:", error); return false; }
+    return true;
   }
 
   async function renameMember(id, name) {
     const { error } = await supabase.from("team_members").update({ name }).eq("id", id);
     if (error) console.error("renameMember:", error);
     if (!error && currentUser?.role === "member" && currentUser.id === id) {
-      const updated = { ...currentUser, name };
-      setCurrentUser(updated);
-      localStorage.setItem(CURRENT_USER_KEY, JSON.stringify(updated));
+      const u = { ...currentUser, name };
+      setCurrentUser(u); localStorage.setItem(CURRENT_USER_KEY, JSON.stringify(u));
     }
   }
 
@@ -388,9 +391,13 @@ export default function App() {
     const { error } = await supabase.from("team_members").delete().eq("id", id);
     if (error) console.error("removeMember:", error);
     if (!error && currentUser?.role === "member" && currentUser.id === id) {
-      setCurrentUser(null);
-      localStorage.removeItem(CURRENT_USER_KEY);
+      setCurrentUser(null); localStorage.removeItem(CURRENT_USER_KEY);
     }
+  }
+
+  async function toggleMemberActive(id, active) {
+    const { error } = await supabase.from("team_members").update({ active }).eq("id", id);
+    if (error) console.error("toggleMemberActive:", error);
   }
 
   async function resetScores() {
@@ -409,9 +416,8 @@ export default function App() {
     const { error } = await supabase.from("admins").update({ name }).eq("id", id);
     if (error) console.error("renameAdmin:", error);
     if (!error && currentUser?.role === "admin" && currentUser.id === id) {
-      const updated = { ...currentUser, name };
-      setCurrentUser(updated);
-      localStorage.setItem(CURRENT_USER_KEY, JSON.stringify(updated));
+      const u = { ...currentUser, name };
+      setCurrentUser(u); localStorage.setItem(CURRENT_USER_KEY, JSON.stringify(u));
     }
   }
 
@@ -419,30 +425,24 @@ export default function App() {
     const { error } = await supabase.from("admins").delete().eq("id", id);
     if (error) console.error("removeAdmin:", error);
     if (!error && currentUser?.role === "admin" && currentUser.id === id) {
-      setCurrentUser(null);
-      localStorage.removeItem(CURRENT_USER_KEY);
+      setCurrentUser(null); localStorage.removeItem(CURRENT_USER_KEY);
     }
   }
 
   async function changeAdminPassword(id, newPasswordHash) {
-    const { error } = await supabase
-      .from("admins")
-      .update({ password_hash: newPasswordHash })
-      .eq("id", id);
+    const { error } = await supabase.from("admins").update({ password_hash: newPasswordHash }).eq("id", id);
     if (error) { console.error("changeAdminPassword:", error); return false; }
     return true;
   }
 
   // ── Auth handlers ────────────────────────────────────────────────────────
 
-  // Team member login — tagged with role:'member'
   function selectMember(member) {
     const user = { ...member, role: "member" };
     setCurrentUser(user);
     localStorage.setItem(CURRENT_USER_KEY, JSON.stringify(user));
   }
 
-  // Supervisor login — tagged with role:'admin'
   function selectAdmin(admin) {
     const user = { ...admin, role: "admin" };
     setCurrentUser(user);
@@ -456,9 +456,7 @@ export default function App() {
 
   // ── Render ───────────────────────────────────────────────────────────────
 
-  if (loading) {
-    return <div className="loading-screen">Loading…</div>;
-  }
+  if (loading) return <div className="loading-screen">Loading…</div>;
 
   if (!currentUser) {
     return (
@@ -476,22 +474,14 @@ export default function App() {
   return (
     <div className="app-wrapper">
 
-      {/* ── Header ───────────────────────────────────────────── */}
       <div className="header">
         <div className="header-title">OVERTIME TRACKER</div>
         <div className="header-row">
-          <div className="header-subtitle">
-            {isAdmin ? "Co-ordinator view" : "Fair rotation system"}
-          </div>
-          {/* Tap name to sign out and switch identity */}
-          <button className="signout-btn" onClick={signOut}>
-            {currentUser.name} ✕
-          </button>
+          <div className="header-subtitle">{isAdmin ? "Co-ordinator view" : "Fair rotation system"}</div>
+          <button className="signout-btn" onClick={signOut}>{currentUser.name} ✕</button>
         </div>
       </div>
 
-      {/* ── Tab bar ──────────────────────────────────────────── */}
-      {/* Post OT is only visible to admins */}
       <div className="tab-bar">
         {[
           ["board",   "Board"],
@@ -500,24 +490,19 @@ export default function App() {
           ["setup",   "Setup"],
           ["about",   "About"],
         ].map(([key, label]) => (
-          <button
-            key={key}
-            className={`tab-btn ${tab === key ? "active" : ""}`}
-            onClick={() => setTab(key)}
-          >
+          <button key={key} className={`tab-btn ${tab === key ? "active" : ""}`} onClick={() => setTab(key)}>
             {label}
           </button>
         ))}
       </div>
 
-      {/* ── Tab content ──────────────────────────────────────── */}
       <div className="tab-content">
 
         {tab === "board" && (
           <Board
             team={team}
             history={history}
-            activeOffer={activeOffer}
+            activeOffers={activeOffers}
             currentUser={currentUser}
             onRespond={respond}
             onCloseOT={closeOT}
@@ -526,7 +511,7 @@ export default function App() {
         )}
 
         {tab === "post" && isAdmin && (
-          <PostOT activeOffer={activeOffer} onPost={postOT} />
+          <PostOT onPost={postOT} />
         )}
 
         {tab === "history" && (
@@ -541,6 +526,7 @@ export default function App() {
             onAdd={addMember}
             onRename={renameMember}
             onRemove={removeMember}
+            onToggleMemberActive={toggleMemberActive}
             onResetScores={resetScores}
             onAddAdmin={addAdmin}
             onRenameAdmin={renameAdmin}
@@ -549,9 +535,7 @@ export default function App() {
           />
         )}
 
-        {tab === "about" && (
-          <About />
-        )}
+        {tab === "about" && <About />}
 
       </div>
     </div>
