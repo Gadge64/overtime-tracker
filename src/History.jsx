@@ -18,7 +18,19 @@ function formatDate(ts) {
   return new Date(ts).toLocaleDateString("en-GB", { day: "numeric", month: "short" });
 }
 
-export default function History({ history, team }) {
+export default function History({ history, team, currentUser }) {
+  // History is co-ordinator only — members see a locked message
+  if (currentUser?.role !== "admin") {
+    return (
+      <div>
+        <div className="section-title">Past overtime offers</div>
+        <div className="card" style={{ fontSize: 13, color: "#9aa8a6", textAlign: "center", padding: "24px 16px" }}>
+          🔒 OT history is visible to co-ordinators only.
+        </div>
+      </div>
+    );
+  }
+
   if (history.length === 0) {
     return (
       <div>

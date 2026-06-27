@@ -553,7 +553,7 @@ export default function App() {
         )}
 
         {tab === "history" && (
-          <History history={history} team={team} />
+          <History history={history} team={team} currentUser={currentUser} />
         )}
 
         {tab === "setup" && (

@@ -236,25 +236,34 @@ function OfferCard({ offer, ranked, currentUser, currentUserIsActive, isAdmin, o
       )}
 
       {/* ── Team response list ────────────────────────────── */}
+      {/* Co-ordinators see the full breakdown; members only see a count */}
       <div className="section-title">Team responses</div>
-      {ranked.map(m => {
-        const resp = offer.ot_responses?.find(r => r.member_id === m.id);
-        return (
-          <div key={m.id} className="card" style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "10px 14px" }}>
-            <span style={{ fontSize: 13, color: "#1a2e2e", fontWeight: 500 }}>
-              {m.name}
-              {m.id === currentUser.id && <span style={{ color: "#9aa8a6" }}> (you)</span>}
-            </span>
-            {resp ? (
-              <span className={`badge ${resp.answer === "yes" ? "badge-green" : "badge-red"}`}>
-                {resp.answer === "yes" ? "✓ In" : "✗ Declined"}
+      {isAdmin ? (
+        ranked.map(m => {
+          const resp = offer.ot_responses?.find(r => r.member_id === m.id);
+          return (
+            <div key={m.id} className="card" style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "10px 14px" }}>
+              <span style={{ fontSize: 13, color: "#1a2e2e", fontWeight: 500 }}>
+                {m.name}
+                {m.id === currentUser.id && <span style={{ color: "#9aa8a6" }}> (you)</span>}
               </span>
-            ) : (
-              <span className="badge badge-grey">Waiting</span>
-            )}
-          </div>
-        );
-      })}
+              {resp ? (
+                <span className={`badge ${resp.answer === "yes" ? "badge-green" : "badge-red"}`}>
+                  {resp.answer === "yes" ? "✓ In" : "✗ Declined"}
+                </span>
+              ) : (
+                <span className="badge badge-grey">Waiting</span>
+              )}
+            </div>
+          );
+        })
+      ) : (
+        // Members only see a count — individual responses are co-ordinator only
+        <div className="card" style={{ padding: "10px 14px", fontSize: 13, color: "#7a8c8a" }}>
+          {offer.ot_responses?.length ?? 0} of {ranked.length} members responded
+          {pendingCount > 0 && ` · ${pendingCount} still to reply`}
+        </div>
+      )}
 
       {/* ── Co-ordinator award section ────────────────────── */}
       {isAdmin && yesResponders.length > 0 && (
@@ -382,16 +391,18 @@ export default function Board({ team, history, activeOffers, currentUser, onResp
 
       {/* ── Priority board ─────────────────────────────────── */}
       <div className="section-title">Priority board — fewest hours goes first</div>
-      <div style={{ fontSize: 11, color: "#9aa8a6", marginBottom: 10 }}>
-        Tap a name to see their overtime history.
-      </div>
+      {isAdmin && (
+        <div style={{ fontSize: 11, color: "#9aa8a6", marginBottom: 10 }}>
+          Tap a name to see their overtime history.
+        </div>
+      )}
 
       {ranked.map((m, i) => (
         <div
           key={m.id}
           className="card"
-          style={{ display: "flex", alignItems: "center", gap: 14, cursor: "pointer" }}
-          onClick={() => setSelectedMember(m)}
+          style={{ display: "flex", alignItems: "center", gap: 14, cursor: isAdmin ? "pointer" : "default" }}
+          onClick={() => isAdmin && setSelectedMember(m)}
         >
           <div className={`rank-num ${i === 0 ? "top" : ""}`}>
             {String(i + 1).padStart(2, "0")}
