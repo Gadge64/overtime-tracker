@@ -19,7 +19,7 @@
 //     everyone has answered and closes/awards immediately if so.
 // ============================================================
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { supabase } from "./supabase";
 import Board   from "./Board";
 import PostOT  from "./PostOT";
@@ -171,11 +171,13 @@ export default function App() {
 
   const [team,         setTeam]         = useState([]);
   const [admins,       setAdmins]       = useState([]);
-  // activeOffers holds all open offers PLUS any closed/cancelled in the last 30 min
-  // so the Board can show "just awarded" results without switching to History.
   const [activeOffers, setActiveOffers] = useState([]);
   const [history,      setHistory]      = useState([]);
   const [loading,      setLoading]      = useState(true);
+  // toast: { message, type } | null — shown for 4s when a shift is auto-awarded
+  const [toast, setToast] = useState(null);
+  // teamRef lets the realtime callback look up winner names without a stale closure
+  const teamRef = useRef([]);
 
   const [currentUser, setCurrentUser] = useState(() => {
     try { return JSON.parse(localStorage.getItem(CURRENT_USER_KEY)); }
@@ -183,6 +185,16 @@ export default function App() {
   });
 
   // ── Data fetching ───────────────────────────────────────────────────────
+
+  // Keep teamRef in sync so realtime callbacks can look up names without stale closures
+  useEffect(() => { teamRef.current = team; }, [team]);
+
+  // Auto-dismiss toast after 4 seconds
+  useEffect(() => {
+    if (!toast) return;
+    const t = setTimeout(() => setToast(null), 4000);
+    return () => clearTimeout(t);
+  }, [toast]);
 
   const fetchTeam = useCallback(async () => {
     const { data, error } = await supabase
@@ -287,9 +299,14 @@ export default function App() {
       .channel("overtime-changes")
       .on("postgres_changes", { event: "*", schema: "public", table: "team_members" }, () => fetchTeam())
       .on("postgres_changes", { event: "*", schema: "public", table: "admins" }, () => fetchAdmins())
-      .on("postgres_changes", { event: "*", schema: "public", table: "ot_offers" }, () => {
+      .on("postgres_changes", { event: "*", schema: "public", table: "ot_offers" }, (payload) => {
         fetchActiveOffers();
         fetchHistory();
+        // Show a toast when the system auto-awards a shift
+        if (payload.eventType === "UPDATE" && payload.new?.status === "closed" && payload.new?.winner_id) {
+          const winner = teamRef.current.find(m => m.id === payload.new.winner_id);
+          if (winner) setToast({ message: `Shift awarded to ${winner.name}`, type: "success" });
+        }
       })
       .on("postgres_changes", { event: "*", schema: "public", table: "ot_responses" }, () => fetchActiveOffers())
       .subscribe();
@@ -329,20 +346,18 @@ export default function App() {
 
   // ── Actions: OT offers ──────────────────────────────────────────────────
 
-  // Posts a new offer. Multiple offers can now be live simultaneously.
-  // shiftHours is stored so the close_ot_offer RPC can award the right score.
-  async function postOT({ desc, shiftType, shiftStart, shiftEnd, shiftHours }) {
-    const start   = new Date(shiftStart);
-    const hoursUntil = (start - Date.now()) / 3_600_000;
-    const wh = hoursUntil >= 72 ? 24 : hoursUntil >= 48 ? 12 : null;
+  // Posts a new offer. windowHours comes from PostOT (already calculated there,
+  // including the short-notice coordinator-chosen window for sub-48h shifts).
+  async function postOT({ desc, shiftType, shiftStart, shiftEnd, shiftHours, windowHours }) {
+    const start = new Date(shiftStart);
     const payload = {
       description:  desc,
       shift_type:   shiftType,
       shift_time:   start.toISOString(),
       shift_end:    shiftEnd ? new Date(shiftEnd).toISOString() : null,
       shift_hours:  shiftHours,
-      window_hours: wh,
-      closes_at:    wh ? new Date(Date.now() + wh * 3_600_000).toISOString() : null,
+      window_hours: windowHours ?? null,
+      closes_at:    windowHours ? new Date(Date.now() + windowHours * 3_600_000).toISOString() : null,
       status:       "open",
       immediate:    false,
     };
@@ -484,6 +499,18 @@ export default function App() {
 
   return (
     <div className="app-wrapper">
+
+      {/* Toast — slides in from the bottom when a shift is auto-awarded */}
+      {toast && (
+        <div onClick={() => setToast(null)} style={{
+          position: "fixed", bottom: 24, left: "50%", transform: "translateX(-50%)",
+          background: "#042d2d", color: "#fff", padding: "12px 20px", borderRadius: 8,
+          fontSize: 13, fontWeight: 600, zIndex: 9999, boxShadow: "0 4px 16px rgba(0,0,0,0.25)",
+          cursor: "pointer", whiteSpace: "nowrap",
+        }}>
+          ✓ {toast.message}
+        </div>
+      )}
 
       <div className="header">
         <div className="header-title">OVERTIME TRACKER</div>

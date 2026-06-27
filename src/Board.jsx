@@ -132,6 +132,8 @@ function RecentlyClosedCard({ offer, team }) {
 
 function OfferCard({ offer, ranked, currentUser, currentUserIsActive, isAdmin, onRespond, onCloseOT, onCancelOT }) {
   const myResponse = offer.ot_responses?.find(r => r.member_id === currentUser.id);
+  // changing=true shows the buttons again so the member can update their response
+  const [changing, setChanging] = useState(false);
 
   // Window label shown at the top of the card
   let windowLabel = null;
@@ -208,14 +210,23 @@ function OfferCard({ offer, ranked, currentUser, currentUserIsActive, isAdmin, o
                 {currentUser.name} <span style={{ color: "#9aa8a6" }}>(you)</span>
               </span>
               <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-                {myResponse ? (
-                  <span className={`badge ${myResponse.answer === "yes" ? "badge-green" : "badge-red"}`}>
-                    {myResponse.answer === "yes" ? "✓ Opted in" : "✗ Declined"}
-                  </span>
+                {myResponse && !changing ? (
+                  // Show current response + option to change it before the window closes
+                  <>
+                    <span className={`badge ${myResponse.answer === "yes" ? "badge-green" : "badge-red"}`}>
+                      {myResponse.answer === "yes" ? "✓ Opted in" : "✗ Declined"}
+                    </span>
+                    <button className="btn" style={{ padding: "3px 10px", fontSize: 11 }} onClick={() => setChanging(true)}>
+                      Change
+                    </button>
+                  </>
                 ) : (
                   <>
-                    <button className="btn yes" style={{ padding: "5px 14px" }} onClick={() => onRespond(currentUser.id, "yes")}>Opt in</button>
-                    <button className="btn no"  style={{ padding: "5px 14px" }} onClick={() => onRespond(currentUser.id, "no")}>Decline</button>
+                    <button className="btn yes" style={{ padding: "5px 14px" }} onClick={() => { onRespond(currentUser.id, "yes"); setChanging(false); }}>Opt in</button>
+                    <button className="btn no"  style={{ padding: "5px 14px" }} onClick={() => { onRespond(currentUser.id, "no");  setChanging(false); }}>Decline</button>
+                    {changing && (
+                      <button className="btn" style={{ padding: "5px 10px", fontSize: 11 }} onClick={() => setChanging(false)}>Cancel</button>
+                    )}
                   </>
                 )}
               </div>

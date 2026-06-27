@@ -88,6 +88,8 @@ export default function PostOT({ onPost }) {
   const [manualStart, setManualStart] = useState("08:00");  // "HH:MM" for manual entry
   const [manualEnd,   setManualEnd]   = useState("16:30");  // "HH:MM" for manual entry
   const [desc,        setDesc]        = useState("");
+  // Short window for shifts under 48h away — coordinator picks 30min/1h/2h
+  const [shortWindow, setShortWindow] = useState(null);
 
   // Day of week for the chosen date (0=Sun … 6=Sat)
   const dayOfWeek = shiftDate ? new Date(shiftDate).getDay() : null;
@@ -136,23 +138,28 @@ export default function PostOT({ onPost }) {
     }
   }, [shiftDate]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const canSubmit = !!shiftDate && !!selection && !!desc.trim() && shiftHours > 0 && !tooSoon;
+  // tooSoon offers are allowed if the coordinator picks a short window
+  const canSubmit = !!shiftDate && !!selection && !!desc.trim() && shiftHours > 0 && (!tooSoon || shortWindow !== null);
+
+  // Effective window: calculated for planned offers, coordinator-chosen for short-notice
+  const effectiveWindowHours = tooSoon ? shortWindow : windowHours;
 
   function handleSubmit() {
     if (!canSubmit) return;
     onPost({
-      desc:       desc.trim(),
-      shiftType:  selection === "manual" ? "manual" : activePreset.type,
-      shiftStart: effectiveStart.toISOString(),
-      shiftEnd:   effectiveEnd.toISOString(),
-      shiftHours: Math.round(shiftHours * 100) / 100,  // round to 2dp
+      desc:        desc.trim(),
+      shiftType:   selection === "manual" ? "manual" : activePreset.type,
+      shiftStart:  effectiveStart.toISOString(),
+      shiftEnd:    effectiveEnd.toISOString(),
+      shiftHours:  Math.round(shiftHours * 100) / 100,
+      windowHours: effectiveWindowHours,  // pass explicit window so postOT doesn't recalculate
     });
-    // Reset form
     setShiftDate("");
     setSelection(null);
     setManualStart("08:00");
     setManualEnd("16:30");
     setDesc("");
+    setShortWindow(null);
   }
 
   return (
@@ -266,13 +273,32 @@ export default function PostOT({ onPost }) {
       {effectiveStart && (
         <div style={{ marginBottom: 14 }}>
           {tooSoon ? (
-            <div className="warning-box">
-              ⚠ This shift is less than 48 hours away. Consider using WhatsApp for short-notice cover.
-              You can still post it here but no automatic response window will be set.
+            // Short-notice: coordinator picks a quick response window instead of being blocked
+            <div>
+              <div className="warning-box" style={{ marginBottom: 10 }}>
+                ⚠ This shift is less than 48 hours away. Pick a short response window below.
+              </div>
+              <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                {[0.5, 1, 2, 4].map(h => (
+                  <button
+                    key={h}
+                    className={`btn ${shortWindow === h ? "primary" : ""}`}
+                    style={{ padding: "6px 14px", fontSize: 12 }}
+                    onClick={() => setShortWindow(h)}
+                  >
+                    {h < 1 ? "30 min" : `${h}h`}
+                  </button>
+                ))}
+              </div>
+              {shortWindow !== null && (
+                <div style={{ fontSize: 11, color: "#042d2d", fontWeight: 600, marginTop: 8 }}>
+                  Window closes: {new Date(Date.now() + shortWindow * 3_600_000).toLocaleString("en-GB", { weekday: "short", day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })}
+                </div>
+              )}
             </div>
           ) : (
             <div style={{ fontSize: 11, color: "#042d2d", fontWeight: 600 }}>
-              Response window: {windowHours} hours — closes {new Date(Date.now() + windowHours * 3_600_000).toLocaleString("en-GB", { weekday: "short", day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })}
+              Response window: {windowHours}h — closes {new Date(Date.now() + windowHours * 3_600_000).toLocaleString("en-GB", { weekday: "short", day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })}
             </div>
           )}
         </div>
