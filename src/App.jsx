@@ -372,48 +372,79 @@ export default function App() {
       .single();
     if (error) { console.error("postOT:", error); return; }
 
-    // Look up roster for this date + look-ahead and auto-decline ineligible members.
-    // Rules from the roster context:
-    //   - ot_available=false on day X                  → unavailable
-    //   - N or NW base_duty on day X+1                 → unavailable (shift starts that evening)
-    //   - N or NW base_duty on day X+2 AND offer is not N/NW → unavailable (needs rest before night shift)
+    // Look up roster for adjacent dates and auto-decline ineligible members.
+    //
+    // Look-AHEAD rules (apply to all offer types):
+    //   X+1 has N or NW  → unavailable on X (shift starts that evening)
+    //   X+2 has N or NW  → eligible for N/NW OT only (needs daytime rest)
+    //
+    // Look-BACK rules (apply only when the offer itself is N or NW, because
+    // night shifts start the evening BEFORE the roster calendar date):
+    //   NW offer (starts 20:00 on X-1): blocked if X-1 duty is E (ends 22:15),
+    //     EW (ends 20:15), or E* (ends 20:15) — all overlap the 20:00 start
+    //   N offer  (starts 22:00 on X-1): blocked if X-1 duty is E (ends 22:15)
+    //     only — EW/E* end at 20:15 leaving 1h45m clear, so no conflict
     if (rosterDate) {
-      // Helper: add n calendar days to a YYYY-MM-DD string (UTC-safe)
+      // Add n calendar days to a YYYY-MM-DD string (UTC-safe, handles month/year rollovers)
       function addDays(isoDate, n) {
         const [y, mo, d] = isoDate.split("-").map(Number);
         return new Date(Date.UTC(y, mo - 1, d + n)).toISOString().slice(0, 10);
       }
-      const dateX  = rosterDate;
-      const dateX1 = addDays(rosterDate, 1);
-      const dateX2 = addDays(rosterDate, 2);
+
+      const nightDuties  = new Set(["N", "NW"]);
+      const offerIsNight = nightDuties.has(shiftType);
+
+      const dateXm1 = addDays(rosterDate, -1);
+      const dateX   = rosterDate;
+      const dateX1  = addDays(rosterDate, 1);
+      const dateX2  = addDays(rosterDate, 2);
+
+      // Fetch X-1 only for night offers (it's the physical start evening)
+      const datesToFetch = offerIsNight
+        ? [dateXm1, dateX, dateX1, dateX2]
+        : [dateX, dateX1, dateX2];
 
       const { data: rosterRows } = await supabase
         .from("roster_availability")
         .select("date, engineer, ot_available, base_duty")
-        .in("date", [dateX, dateX1, dateX2]);
+        .in("date", datesToFetch);
 
       if (rosterRows && rosterRows.length > 0) {
-        // Group by date so look-ahead can check X+1 and X+2 separately
+        // Group rows by date for fast per-engineer lookups
         const byDate = {};
         for (const r of rosterRows) {
           if (!byDate[r.date]) byDate[r.date] = {};
           byDate[r.date][r.engineer] = r;
         }
-        const rX  = byDate[dateX]  || {};
-        const rX1 = byDate[dateX1] || {};
-        const rX2 = byDate[dateX2] || {};
-
-        const nightDuties  = new Set(["N", "NW"]);
-        const offerIsNight = nightDuties.has(shiftType);
+        const rXm1 = byDate[dateXm1] || {};
+        const rX   = byDate[dateX]   || {};
+        const rX1  = byDate[dateX1]  || {};
+        const rX2  = byDate[dateX2]  || {};
 
         const toDecline = team.filter(m => {
           if (m.active === false) return false;
-          // Explicitly not available on the offer date
-          if (rX[m.name] && !rX[m.name].ot_available)                               return true;
-          // Starting a night shift the same evening as the offer date
-          if (rX1[m.name] && nightDuties.has(rX1[m.name].base_duty))                return true;
-          // Starting a night shift in two days — needs rest, eligible for N/NW OT only
+
+          // Basic: explicitly unavailable on the offer date
+          if (rX[m.name] && !rX[m.name].ot_available) return true;
+
+          // Look-ahead: starting a night shift that same evening (X+1 roster date)
+          if (rX1[m.name] && nightDuties.has(rX1[m.name].base_duty)) return true;
+
+          // Look-ahead: night shift in two days — must rest; daytime OT blocked
           if (rX2[m.name] && nightDuties.has(rX2[m.name].base_duty) && !offerIsNight) return true;
+
+          // Look-back (N/NW offers only): the night shift physically starts on X-1
+          // evening (NW 20:00, N 22:00), so we must check what the engineer was
+          // doing on X-1.
+          //   E/EW/E* on X-1 → BLOCK: these end at 20:15–22:15, placing them
+          //     back-to-back with the night start (15-min overlap by design).
+          //   N/NW on X-1    → OK: that shift started X-2 evening and ended at
+          //     08:15 on X-1, giving a full day's rest before the new night start.
+          if (offerIsNight) {
+            const xm1Duty = rXm1[m.name]?.base_duty;
+            if (xm1Duty && ["E", "EW", "E*"].includes(xm1Duty)) return true;
+          }
+
           return false;
         });
 
