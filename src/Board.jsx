@@ -173,7 +173,7 @@ function OfferCard({ offer, ranked, currentUser, currentUserIsActive, isAdmin, o
     <div className="ot-alert" style={{ marginBottom: 16 }}>
       {/* Header */}
       <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 8 }}>
-        <h3 style={{ margin: 0 }}>⚡ {offer.shift_type ? `${offer.shift_type} — ` : ""}{offer.description}</h3>
+        <h3 style={{ margin: 0 }}>⚡ {offer.description}</h3>
         {offer.shift_type && (
           <span className="badge badge-gold" style={{ flexShrink: 0 }}>{offer.shift_type}</span>
         )}

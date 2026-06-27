@@ -268,8 +268,13 @@ export default function PostOT({ onPost, team = [] }) {
           onChange={e => { setShiftDate(e.target.value); setSelection(null); setDesc(""); }}
         />
         {shiftDate && (
-          <div style={{ fontSize: 11, color: "#7a8c8a", marginTop: 4 }}>
-            {DAY_NAMES[dayOfWeek]} — {availablePresets.length} preset{availablePresets.length !== 1 ? "s" : ""} available
+          <div style={{ display: "flex", alignItems: "center", gap: 10, marginTop: 6 }}>
+            <span style={{ fontSize: 14, fontWeight: 700, color: "#042d2d", fontFamily: "'Archivo', sans-serif" }}>
+              {DAY_NAMES[dayOfWeek]}
+            </span>
+            <span style={{ fontSize: 11, color: "#7a8c8a" }}>
+              {availablePresets.length} preset{availablePresets.length !== 1 ? "s" : ""} available
+            </span>
           </div>
         )}
       </div>
