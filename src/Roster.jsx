@@ -155,6 +155,7 @@ export default function Roster({ currentUser, team }) {
   const [myRoster,     setMyRoster]     = useState({});    // date → { base_duty, status, ot_available }
   const [theirRoster,  setTheirRoster]  = useState({});    // same, for comparison engineer
   const [pendingReqs,  setPendingReqs]  = useState([]);
+  const [history,      setHistory]      = useState([]);    // accepted swap/UDR records
   const [requestModal, setRequestModal] = useState(null);  // { myDate, myDuty, dayLabel }
   const [loading,      setLoading]      = useState(true);
   const [toast,        setToast]        = useState(null);
@@ -208,9 +209,20 @@ export default function Roster({ currentUser, team }) {
     setPendingReqs(data || []);
   }, [currentUser.id]);
 
+  // Fetch accepted records so both sides can see the cover history
+  const fetchHistory = useCallback(async () => {
+    const { data } = await supabase
+      .from("swaps")
+      .select("*")
+      .or(`requester_id.eq.${currentUser.id},partner_id.eq.${currentUser.id}`)
+      .eq("status", "accepted")
+      .order("responded_at", { ascending: false });
+    setHistory(data || []);
+  }, [currentUser.id]);
+
   useEffect(() => {
     setLoading(true);
-    Promise.all([fetchMyRoster(), fetchPending()]).finally(() => setLoading(false));
+    Promise.all([fetchMyRoster(), fetchPending(), fetchHistory()]).finally(() => setLoading(false));
   }, [weekOffset, myInitials]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => { fetchTheirRoster(); }, [compareWith, weekOffset]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -255,6 +267,7 @@ export default function Roster({ currentUser, team }) {
     if (!error) {
       setToast(status === "accepted" ? "Accepted." : "Declined.");
       fetchPending();
+      fetchHistory();
     }
   }
 
@@ -344,6 +357,64 @@ export default function Roster({ currentUser, team }) {
                   </div>
                 ) : (
                   <div style={{ fontSize: 11, color: "#9aa8a6", marginTop: 6 }}>Waiting for {otherName} to respond.</div>
+                )}
+              </div>
+            );
+          })}
+        </>
+      )}
+
+      {/* ── Cover history ─────────────────────────────────────── */}
+      {history.length > 0 && (
+        <>
+          <div className="section-title">Cover history</div>
+          {history.map(rec => {
+            const iCovered  = rec.partner_id    === currentUser.id; // I was the covering engineer
+            const theyGotCovered = rec.requester_id === currentUser.id; // my shift was covered
+
+            // Resolve the other person's name from the team list
+            const otherName = iCovered
+              ? team.find(m => m.id === rec.requester_id)?.name
+              : team.find(m => m.id === rec.partner_id)?.name;
+
+            const typeLabel = rec.type === "udr" ? "UDR" : "Swap";
+            const typeColour = rec.type === "udr" ? "#2471a3" : "#7d3c98";
+
+            return (
+              <div key={rec.id} className="card" style={{ borderLeft: `3px solid ${typeColour}` }}>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 4 }}>
+                  <div style={{ fontSize: 11, fontWeight: 700, color: typeColour, textTransform: "uppercase", letterSpacing: 1 }}>
+                    {typeLabel}
+                  </div>
+                  {rec.responded_at && (
+                    <div style={{ fontSize: 10, color: "#9aa8a6" }}>
+                      {new Date(rec.responded_at).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" })}
+                    </div>
+                  )}
+                </div>
+
+                <div style={{ fontSize: 13, color: "#1a2e2e", lineHeight: 1.6 }}>
+                  {iCovered ? (
+                    // I covered someone else's shift
+                    <>
+                      You covered <strong>{otherName}</strong>'s <strong>{rec.requester_duty}</strong> on <strong>{fmtDate(rec.requester_date)}</strong>
+                      {rec.type === "swap" && (
+                        <span style={{ color: "#7d3c98" }}> — return shift owed by {otherName}</span>
+                      )}
+                    </>
+                  ) : (
+                    // My shift was covered by someone else
+                    <>
+                      <strong>{otherName}</strong> covered your <strong>{rec.requester_duty}</strong> on <strong>{fmtDate(rec.requester_date)}</strong>
+                      {rec.type === "swap" && (
+                        <span style={{ color: "#7d3c98" }}> — you owe {otherName} a return shift</span>
+                      )}
+                    </>
+                  )}
+                </div>
+
+                {rec.note && (
+                  <div style={{ fontSize: 11, color: "#7a8c8a", marginTop: 4, fontStyle: "italic" }}>"{rec.note}"</div>
                 )}
               </div>
             );
